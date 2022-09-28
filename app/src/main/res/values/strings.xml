@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Snapshots</string>
+    <string name="home_title">Inicio</string>
+    <string name="home_add">Crear</string>
+    <string name="home_profile">Perfil</string>
+    <string name="main_auth_welcome">Bienvenido</string>
+    <string name="button_logout">Cerrar sesión</string>
+    <string name="home_delete_photo_error">Error al eliminar la foto</string>
+    <string name="description_button_delete">Botón para eliminar</string>
+    <string name="description_img_publication_user">Imagen publicada por el usuario</string>
+
+    <string name="dialog_delete_title">¿Eliminar imagen instantánea?</string>
+    <string name="dialog_delete_confirm">Eliminar</string>
+    <string name="dialog_delete_cancel">Cancelar</string>
+
+    <string name="profile_logout_success">¡Hasta pronto!</string>
+    <string name="helper_required">Requerido</string>
+
+    <string name="post_message_title">Seleccione una imagen</string>
+    <string name="post_message_valid_title">Por favor, añada un título</string>
+    <string name="post_message_post_image_fail">No se pudo cargar la imagen.</string>
+    <string name="post_message_post_success">Imagen instantánea publicada.</string>
+    <string name="post_message_post_fail">No se pudo publicar la imagen instantánea.</string>
+
+    <string name="dialog_logout_title">¿Desea cerrar la sesión actual?</string>
+    <string name="dialog_logout_confirm">Cerrar</string>
+    <string name="dialog_logout_cancel">Cancelar</string>
+</resources>
