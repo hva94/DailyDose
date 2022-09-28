@@ -4,29 +4,54 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:padding="@dimen/common_padding_middle"
     tools:context=".ProfileFragment">
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnLogout"
-        android:layout_width="wrap_content"
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/button_logout"
-        app:icon="@drawable/ic_exit_to_app"
+        android:visibility="invisible"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"/>
+        style="?android:progressBarStyleHorizontal"/>
+
+    <ImageView
+        android:id="@+id/imgPhoto"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:scaleType="centerCrop"
+        android:layout_marginTop="@dimen/common_padding_min"
+        android:importantForAccessibility="no"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/progressBar"
+        app:layout_constraintDimensionRatio="H, 1:1"/>
+
+    <ImageButton
+        android:id="@+id/btnSelect"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:src="@drawable/ic_image_search_profile"
+        android:background="?attr/selectableItemBackground"
+        android:contentDescription="@string/add_button_select"
+        app:layout_constraintStart_toStartOf="@id/imgPhoto"
+        app:layout_constraintEnd_toEndOf="@id/imgPhoto"
+        app:layout_constraintTop_toTopOf="@id/imgPhoto"
+        app:layout_constraintBottom_toBottomOf="@id/imgPhoto"
+        app:layout_constraintTop_toBottomOf="@id/imgPhoto"/>
 
     <TextView
         android:id="@+id/tvName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.MaterialComponents.Headline5"
+        android:layout_marginTop="@dimen/common_padding_middle"
         tools:text="Nombre completo"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/btnLogout"/>
+        app:layout_constraintTop_toBottomOf="@id/imgPhoto"/>
 
     <TextView
         android:id="@+id/tvEmail"
@@ -37,5 +62,16 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvName"/>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnLogout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/button_logout"
+        android:layout_marginTop="@dimen/common_padding_middle"
+        app:icon="@drawable/ic_exit_to_app"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvEmail"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

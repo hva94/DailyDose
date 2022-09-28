@@ -1,6 +1,5 @@
 package com.example.snapshots
 
-
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.widget.Toast
@@ -14,10 +13,9 @@ import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : AppCompatActivity(), MainAux {
-
     private lateinit var mBinding: ActivityMainBinding
-
     private lateinit var mActiveFragment: Fragment
+
     private var mFragmentManager: FragmentManager? = null
 
     private lateinit var mAuthListener: FirebaseAuth.AuthStateListener
@@ -48,6 +46,9 @@ class MainActivity : AppCompatActivity(), MainAux {
                 authResult.launch(
                 AuthUI.getInstance().createSignInIntentBuilder()
                     .setIsSmartLockEnabled(false)
+                    .setLogo(R.mipmap.ic_banner)
+                    .setTheme(R.style.LoginTheme)
+                    .setLockOrientation(true)
                     .setAvailableProviders(
                         listOf(
                             AuthUI.IdpConfig.EmailBuilder().build(),
@@ -141,3 +142,10 @@ class MainActivity : AppCompatActivity(), MainAux {
             .show()
     }
 }
+
+/*
+* SDK PERSONAL
+**/
+//Snackbar.make(mBinding.root, "texto",Snackbar.LENGTH_LONG).show()
+//Snackbar.make(mBinding.root, photoUrl,Snackbar.LENGTH_LONG).show()
+//mainAux?.showMessage(R.string.snackbar_message_developer)

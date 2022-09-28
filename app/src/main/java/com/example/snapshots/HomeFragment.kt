@@ -17,7 +17,6 @@ import com.firebase.ui.database.FirebaseRecyclerAdapter
 import com.firebase.ui.database.FirebaseRecyclerOptions
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
@@ -29,7 +28,9 @@ class HomeFragment : Fragment(), FragmentAux {
 
     private lateinit var mFirebaseAdapter: FirebaseRecyclerAdapter<Snapshot, SnapshotHolder>
     private lateinit var mLayoutManager: RecyclerView.LayoutManager
+
     private lateinit var mSnapshotsRef: DatabaseReference
+    private var mainAux: MainAux? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -50,7 +51,8 @@ class HomeFragment : Fragment(), FragmentAux {
     }
 
     private fun setupFirebase() {
-        mSnapshotsRef = FirebaseDatabase.getInstance().reference.child(SnapshotsApplication.PATH_SNAPSHOTS)
+        mSnapshotsRef =
+            FirebaseDatabase.getInstance().reference.child(SnapshotsApplication.PATH_SNAPSHOTS)
     }
 
     private fun setupAdapter() {
@@ -65,7 +67,9 @@ class HomeFragment : Fragment(), FragmentAux {
         mFirebaseAdapter = object  : FirebaseRecyclerAdapter<Snapshot, SnapshotHolder>(options){
             private lateinit var mContext: Context
 
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SnapshotHolder {
+            override fun onCreateViewHolder(
+                parent: ViewGroup,
+                viewType: Int): SnapshotHolder {
                 mContext = parent.context
 
                 val view = LayoutInflater.from(mContext)
@@ -76,7 +80,7 @@ class HomeFragment : Fragment(), FragmentAux {
             override fun onBindViewHolder(holder: SnapshotHolder, position: Int, model: Snapshot) {
                 val snapshot = getItem(position)
 
-                with(holder){
+                with(holder) {
                     setListener(snapshot)
 
                     with(binding) {
@@ -84,6 +88,40 @@ class HomeFragment : Fragment(), FragmentAux {
                         cbLike.text = snapshot.likeList.keys.size.toString()
                         cbLike.isChecked = snapshot.likeList
                             .containsKey(SnapshotsApplication.currentUser.uid)
+
+                        //INICIA NOMBRE DEL USUARIO
+                        FirebaseDatabase.getInstance()
+                            .getReference(SnapshotsApplication.PATH_SNAPSHOTS_USERS)
+                            .child(snapshot.idUser)
+                            .get().addOnSuccessListener {
+                                if (it.exists()) {
+                                    val userName = it.child("userName").value.toString()
+                                    tvUserName.text = userName
+
+                                    val photoUrl = it.child("photoUrl").value.toString()
+                                    Glide.with(mContext)
+                                        .load(photoUrl)
+                                        .diskCacheStrategy(DiskCacheStrategy.ALL)
+                                        .centerCrop()
+                                        .circleCrop()
+                                        .into(binding.imgPhotoProfile)
+
+                                } else {
+                                    tvUserName.text = R.string.home_not_found_user_error.toString()
+                                }
+                            }.addOnFailureListener {
+                                mainAux?.showMessage(R.string.home_database_access_error)
+                            }
+                        /*FINALIZA NOMBRE DEL USUARIO*/
+
+                         //EMPIEZA Validación de usuario para ícono de eliminar
+                        if(snapshot.idUser == SnapshotsApplication.currentUser.uid) {
+                            btnDelete.visibility = View.VISIBLE
+                        } else {
+                            btnDelete.visibility = View.INVISIBLE
+                        }
+
+                         //FINALIZA VALIDACIÓN
 
                         Glide.with(mContext)
                             .load(snapshot.photoUrl)
@@ -103,7 +141,6 @@ class HomeFragment : Fragment(), FragmentAux {
 
             override fun onError(error: DatabaseError) {
                 super.onError(error)
-                //Toast.makeText(mContext, error.message, Toast.LENGTH_SHORT).show()
                 Snackbar.make(mBinding.root, error.message, Snackbar.LENGTH_SHORT).show()
             }
         }
@@ -184,4 +221,18 @@ class HomeFragment : Fragment(), FragmentAux {
             }
         }
     }
+/*    //Tomar foto pendiente...
+    inner class SnapshotHolderUser(view: View) : RecyclerView.ViewHolder(view){
+        val bindingUser = ItemSnapshotUserBinding.bind(view)
+
+        fun setListener(snapshotUser: SnapshotUser) {
+            with(bindingUser) {
+                btnDelete.setOnClickListener { deleteSnapshot(snapshotUser) }
+
+                cbLike.setOnCheckedChangeListener { _, checked ->
+                    setLike(snapshotUser, checked)
+                }
+            }
+        }
+    }*/
 }

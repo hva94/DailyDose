@@ -16,7 +16,30 @@
         android:contentDescription="@string/description_button_delete"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"/>
-    
+
+    <ImageView
+        android:id="@+id/imgPhotoProfile"
+        android:layout_width="@dimen/card_img_size"
+        android:layout_height="@dimen/card_img_size"
+        android:layout_marginStart="@dimen/common_padding_min"
+        android:contentDescription="@string/home_profile_user_photo"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/tvUserName"
+        app:layout_constraintTop_toTopOf="@id/tvUserName"
+        app:layout_constraintBottom_toBottomOf="@id/tvUserName"/>
+
+    <TextView
+        android:id="@+id/tvUserName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textAppearance="?attr/textAppearanceSubtitle2"
+        android:layout_marginHorizontal="@dimen/common_padding_min"
+        tools:text="Nombre del usuario"
+        app:layout_constraintStart_toEndOf="@id/imgPhotoProfile"
+        app:layout_constraintEnd_toStartOf="@id/btnDelete"
+        app:layout_constraintTop_toTopOf="@id/btnDelete"
+        app:layout_constraintBottom_toBottomOf="@id/btnDelete"/>
+
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="0dp"
@@ -24,10 +47,9 @@
         android:textAppearance="?attr/textAppearanceSubtitle2"
         android:layout_marginHorizontal="@dimen/common_padding_default"
         tools:text="Título de la instántanea"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/btnDelete"
-        app:layout_constraintTop_toTopOf="@id/btnDelete"
-        app:layout_constraintBottom_toBottomOf="@id/btnDelete"/>
+        app:layout_constraintStart_toEndOf="@id/cbLike"
+        app:layout_constraintTop_toTopOf="@id/cbLike"
+        app:layout_constraintBottom_toBottomOf="@id/cbLike"/>
 
     <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/cbLike"
@@ -39,11 +61,11 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <ImageView
+    <com.ortiz.touchview.TouchImageView
         android:id="@+id/imgPhoto"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_marginTop="@dimen/common_padding_min"
+        android:layout_marginTop="@dimen/common_padding_default"
         android:contentDescription="@string/description_img_publication_user"
         app:layout_constraintDimensionRatio="H, 4:3"
         app:layout_constraintStart_toStartOf="parent"
