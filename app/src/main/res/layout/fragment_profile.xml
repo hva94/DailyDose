@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="@dimen/common_padding_middle"
-    tools:context=".ProfileFragment">
+    tools:context=".ui.profileModule.ProfileFragment">
 
     <ProgressBar
         android:id="@+id/progressBar"

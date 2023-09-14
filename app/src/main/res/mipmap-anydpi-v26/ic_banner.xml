@@ -3,8 +3,8 @@
     <background android:drawable="@color/ic_banner_background"/>
     <foreground>
     <inset android:drawable="@mipmap/ic_banner_foreground"
-        android:insetLeft="12%"
-        android:insetRight="17%"
+        android:insetLeft="20%"
+        android:insetRight="20%"
         android:insetTop="0%"
         android:insetBottom="0%"
         />

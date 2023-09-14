@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:padding="@dimen/common_padding_default"
-    tools:context=".AddFragment">
+    tools:context=".ui.addModule.AddFragment">
 
     <ProgressBar
         android:id="@+id/progressBar"
@@ -65,7 +65,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tilTitle"
-        app:layout_constraintDimensionRatio="H, 4:3"/>
+        app:layout_constraintDimensionRatio="H, 1:1"/>
 
     <ImageButton
         android:id="@+id/btnSelect"

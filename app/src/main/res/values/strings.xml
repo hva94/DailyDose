@@ -1,49 +1,51 @@
 <resources>
-    <string name="app_name">Snapshots</string>
-    <string name="home_title">Inicio</string>
-    <string name="home_add">Crear</string>
+    <string name="app_name">DailyDose</string>
 
-    <string name="snackbar_message_developer">DEVELOPER MESSAGE: \"Característica en desarrollo.\"</string>
+    <string name="main_auth_welcome">Welcome</string>
+    <string name="helper_required">Required</string>
+    <string name="button_logout">Logout</string>
 
-    <string name="main_auth_welcome">Bienvenido</string>
-    <string name="button_logout">Cerrar sesión</string>
+    <string name="add_button_select">Select Image</string>
+    <string name="add_hint_title">Snapshot title</string>
+    <string name="add_default_title">My Daily Dose at %1$s</string>
+    <string name="add_button_post">Publish</string>
+    <string name="add_take_picture_error">The photo could not be taken.</string>
 
-    <string name="helper_required">Requerido</string>
+    <string name="home_title">Home</string>
+    <string name="home_add">Upload</string>
+    <string name="home_profile">Profile</string>
+    <string name="home_not_found_user_data">First you have to add a profile picture from Profile</string>
+    <string name="home_profile_user_photo">User profile picture</string>
 
-    <string name="add_button_select">Seleccionar imagen</string>
-    <string name="add_hint_title">título de la instantánea</string>
-    <string name="add_button_post">Publicar</string>
+    <string name="home_database_access_error">Could not access the database</string>
+    <string name="home_not_found_user_error">User not found</string>
+    <string name="home_update_photo_error">Error updating photo</string>
+    <string name="home_delete_photo_error">Error deleting photo</string>
+    <string name="home_unknown_error">Unknown error</string>
 
-    <string name="home_profile">Perfil</string>
-    <string name="home_delete_photo_error">Error al eliminar la foto</string>
-    <string name="home_profile_user_photo">Foto de perfil del usuario</string>
-    <string name="home_database_access_error">No se pudo acceder a la base de datos</string>
-    <string name="home_not_found_user_error">No se encontró al usuario</string>
-    <string name="home_not_found_user_data">Primero debe agregar su foto de perfil desde Perfil</string>
+    <string name="profile_logout_success">¡See you soon!</string>
+    <string name="profile_database_write_error">Failed to update username</string>
+    <string name="profile_user_image_updated">Profile picture updated successfully</string>
+    <string name="profile_user_image_failed">Profile picture could not be updated</string>
 
-    <string name="profile_logout_success">¡Hasta pronto!</string>
-    <string name="profile_database_write_error">No se pudo actualizar el nombre del usuario</string>
-    <string name="profile_user_image_updated">La imagen de perfil se actualizó con éxito</string>
-    <string name="profile_user_image_failed">La imagen de perfil no se pudo actualizar</string>
+    <string name="description_button_delete">Delete button</string>
+    <string name="description_img_publication_user">Image posted by user</string>
 
-    <string name="description_button_delete">Botón para eliminar</string>
-    <string name="description_img_publication_user">Imagen publicada por el usuario</string>
+    <string name="options_open_camera">Take a photo with the camera</string>
+    <string name="options_open_gallery">Choose an image from the gallery</string>
 
-    <string name="options_open_camera">Tomar una fotografía con la cámara</string>
-    <string name="options_open_gallery">Elegir una imagen desde la galería</string>
+    <string name="post_message_title">Select an image</string>
+    <string name="post_message_valid_title">Please add a title</string>
+    <string name="post_message_post_image_fail">Could not load image.</string>
+    <string name="post_message_post_success">Snapshot posted</string>
+    <string name="post_message_post_fail">Failed to publish snapshot image.</string>
 
-    <string name="dialog_delete_title">¿Eliminar imagen instantánea?</string>
-    <string name="dialog_delete_confirm">Eliminar</string>
-    <string name="dialog_delete_cancel">Cancelar</string>
+    <string name="dialog_options_title">What would you like to do?</string>
+    <string name="dialog_logout_title">Do you want to close the current session?</string>
+    <string name="dialog_logout_confirm">Close</string>
+    <string name="dialog_logout_cancel">Cancel</string>
+    <string name="dialog_delete_title">Delete Snapshot?</string>
+    <string name="dialog_delete_confirm">Delete</string>
+    <string name="dialog_delete_cancel">Cancel</string>
 
-    <string name="post_message_title">Seleccione una imagen</string>
-    <string name="post_message_valid_title">Por favor, añada un título</string>
-    <string name="post_message_post_image_fail">No se pudo cargar la imagen.</string>
-    <string name="post_message_post_success">Imagen instantánea publicada.</string>
-    <string name="post_message_post_fail">No se pudo publicar la imagen instantánea.</string>
-
-    <string name="dialog_logout_title">¿Desea cerrar la sesión actual?</string>
-    <string name="dialog_logout_confirm">Cerrar</string>
-    <string name="dialog_logout_cancel">Cancelar</string>
-    <string name="dialog_options_title">¿Qué desea hacer?</string>
 </resources>

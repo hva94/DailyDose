@@ -8,9 +8,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:922855848949:android:1dacb3560edb44ada9febc",
+        "mobilesdk_app_id": "1:922855848949:android:c8a5f016e14fda70a9febc",
         "android_client_info": {
-          "package_name": "com.example.snapshots"
+          "package_name": "com.hvasoft.snapshots"
         }
       },
       "oauth_client": [
