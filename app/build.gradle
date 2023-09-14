@@ -1,12 +1,14 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'com.google.gms.google-services'
+    // Plugins added
     id 'kotlin-kapt'
+    id 'dagger.hilt.android.plugin'
+    id 'com.google.gms.google-services'
 }
 
 android {
-    namespace 'com.hvasoft.snapshots'
+    namespace 'com.hvasoft.dailydose'
     compileSdk 33
 
     defaultConfig {
@@ -26,13 +28,12 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
-
     buildFeatures {
         viewBinding true
     }
@@ -40,32 +41,52 @@ android {
 
 dependencies {
 
-    implementation 'androidx.core:core-ktx:1.7.0'
+    implementation 'androidx.core:core-ktx:1.10.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.8.0'
+    implementation 'com.google.android.material:material:1.9.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // FirebaseUI Authentication
+    // Firebase Services
     implementation 'com.firebaseui:firebase-ui-auth:8.0.2'
-    // FirebaseUI Realtime Database
     implementation 'com.google.firebase:firebase-database-ktx'
-    // Firebase Storage
     implementation 'com.google.firebase:firebase-storage-ktx'
-    // Firebase BoM (Bill of Materials)
     implementation platform('com.google.firebase:firebase-bom:31.2.1')
-    // ViewModel & LiveData
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.5.1'
-    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.5.1'
-    // Activity & Fragment
-    //implementation 'androidx.activity:activity-ktx:1.6.1'
-    implementation 'androidx.fragment:fragment-ktx:1.5.5'
-    // Coroutines
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
-    // Glide
-    implementation 'com.github.bumptech.glide:glide:4.14.2'
-    kapt 'com.github.bumptech.glide:compiler:4.14.2'
-    // TouchImageView https://github.com/MikeOrtiz/TouchImageView
+
+    // Architecture Components - Lifecycle
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2'
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.6.2'
+    implementation 'androidx.fragment:fragment-ktx:1.6.1'
+
+    // Navigation Component
+    implementation 'androidx.navigation:navigation-fragment-ktx:2.5.3'
+    implementation 'androidx.navigation:navigation-ui-ktx:2.5.3'
+
+    // Data Persistence - Room
+    implementation "androidx.room:room-runtime:2.5.2"
+    implementation "androidx.room:room-ktx:2.5.2"
+    kapt "androidx.room:room-compiler:2.5.2"
+
+    // Dependency Injection - Dagger Hilt
+    implementation 'com.google.dagger:hilt-android:2.48'
+    kapt 'com.google.dagger:hilt-android-compiler:2.48'
+    implementation 'com.squareup.inject:assisted-inject-annotations-dagger2:0.6.0'
+    kapt 'com.squareup.inject:assisted-inject-processor-dagger2:0.6.0'
+
+    // Splash Screen
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+
+    // Third Party Libraries
+    // Glide for image loading
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    kapt 'com.github.bumptech.glide:compiler:4.16.0'
+    // TouchImageView for zooming images
+    // https://github.com/MikeOrtiz/TouchImageView
     implementation "com.github.MikeOrtiz:TouchImageView:1.4.1"
+
+    // Testing
+    testImplementation "io.mockk:mockk:1.13.3"
+    testImplementation "com.google.truth:truth:1.1.3"
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.4"
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
