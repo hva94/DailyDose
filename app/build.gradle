@@ -66,6 +66,14 @@ dependencies {
     implementation "androidx.room:room-ktx:2.5.2"
     kapt "androidx.room:room-compiler:2.5.2"
 
+    // Network - Retrofit, OkHttp, Moshi, Gson
+    implementation "com.squareup.retrofit2:retrofit:2.9.0"
+    implementation "com.squareup.retrofit2:converter-moshi:2.9.0"
+    implementation "com.squareup.retrofit2:converter-gson:2.9.0"
+    implementation "com.squareup.moshi:moshi-kotlin:1.14.0"
+    implementation "com.squareup.okhttp3:logging-interceptor:4.11.0"
+    implementation "com.squareup.okhttp3:okhttp:4.11.0"
+
     // Dependency Injection - Dagger Hilt
     implementation 'com.google.dagger:hilt-android:2.48'
     kapt 'com.google.dagger:hilt-android-compiler:2.48'

@@ -1,4 +1,4 @@
-package com.hvasoft.dailydose.presentation.profileScreen
+package com.hvasoft.dailydose.presentation.screens.profile
 
 import android.app.Activity
 import android.content.Context
@@ -27,12 +27,14 @@ import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.*
 import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.data.model.User
-import com.hvasoft.dailydose.presentation.utils.FragmentAux
-import com.hvasoft.dailydose.presentation.utils.MainAux
+import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
+import com.hvasoft.dailydose.presentation.screens.utils.MainAux
 import com.hvasoft.dailydose.databinding.FragmentProfileBinding
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.io.File
 
+@AndroidEntryPoint
 class ProfileFragment : Fragment(), FragmentAux {
 
     private lateinit var binding: FragmentProfileBinding

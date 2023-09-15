@@ -1,4 +1,4 @@
-package com.hvasoft.dailydose.presentation.utils
+package com.hvasoft.dailydose.presentation.screens.utils
 
 import com.google.android.material.snackbar.Snackbar
 

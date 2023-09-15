@@ -48,4 +48,10 @@
     <string name="dialog_delete_confirm">Delete</string>
     <string name="dialog_delete_cancel">Cancel</string>
 
+    <string name="error_connectivity">Please check your internet connection and try again.</string>
+    <string name="error_unknown">Unknown error occurred.</string>
+
+    <string name="text_no_snapshots">No Snapshots Found!</string>
+    <string name="text_empty_state_snapshots">There are no posts here. \n Add a new one with the Upload Screen!</string>
+
 </resources>

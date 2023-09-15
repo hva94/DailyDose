@@ -1,4 +1,4 @@
-package com.hvasoft.dailydose.presentation.homeScreen.adapter
+package com.hvasoft.dailydose.presentation.screens.home.adapter
 
 import android.content.Context
 import android.view.LayoutInflater

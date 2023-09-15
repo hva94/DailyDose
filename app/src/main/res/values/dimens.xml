@@ -5,4 +5,9 @@
     <dimen name="common_padding_middle">24dp</dimen>
     <dimen name="card_img_size">40dp</dimen>
     <dimen name="card_height">56dp</dimen>
+
+    <dimen name="dimen_12">12dp</dimen>
+    <dimen name="dimen_250">250dp</dimen>
+    <dimen name="dimen_280">280dp</dimen>
+
 </resources>

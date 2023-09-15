@@ -1,4 +1,4 @@
-package com.hvasoft.dailydose.presentation.addScreen
+package com.hvasoft.dailydose.presentation.screens.add
 
 import android.app.Activity
 import android.content.Context
@@ -26,13 +26,15 @@ import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.data.model.Snapshot
 import com.hvasoft.dailydose.databinding.FragmentAddBinding
-import com.hvasoft.dailydose.presentation.utils.MainAux
+import com.hvasoft.dailydose.presentation.screens.utils.MainAux
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@AndroidEntryPoint
 class AddFragment : Fragment() {
 
     private var _binding: FragmentAddBinding? = null

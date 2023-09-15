@@ -2,17 +2,20 @@ package com.hvasoft.dailydose.data.network
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.Observer
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.data.model.Response
 import com.hvasoft.dailydose.data.model.Snapshot
+import com.hvasoft.dailydose.data.utils.DataConstants
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
-class RemoteDatabase(
+class RemoteDatabaseService(
     private val snapshotsDBRef: DatabaseReference = FirebaseDatabase.getInstance().reference
         .child(DataConstants.SNAPSHOTS_PATH),
     private val usersDBRef: DatabaseReference = FirebaseDatabase.getInstance().reference
@@ -20,18 +23,35 @@ class RemoteDatabase(
     private val snapshotsStorageRef: StorageReference = FirebaseStorage.getInstance().reference
         .child(DataConstants.SNAPSHOTS_PATH).child(DataConstants.currentUser.uid)
 ) {
-    companion object {
-        private var INSTANCE: RemoteDatabase? = null
-
-        fun getInstance() = INSTANCE ?: synchronized(this) {
-            RemoteDatabase().also { INSTANCE = it }
-        }
-    }
+//    companion object {
+//        private var INSTANCE: RemoteDatabaseService? = null
+//
+//        fun getInstance() = INSTANCE ?: synchronized(this) {
+//            RemoteDatabaseService().also { INSTANCE = it }
+//        }
+//    }
 
     private val snapshots = mutableListOf<Snapshot>()
     private val snapshotsLiveData: MutableLiveData<MutableList<Snapshot>?> = MutableLiveData()
 
-    suspend fun getSnapshotsLiveData(): LiveData<MutableList<Snapshot>?> {
+    private suspend fun <T> LiveData<T>.awaitValue(): T? {
+        return withContext(Dispatchers.Main) {
+            var value: T? = null
+            val observer = Observer<T> {
+                value = it
+            }
+            observeForever(observer)
+            removeObserver(observer)
+            return@withContext value
+        }
+    }
+
+    suspend fun getSnapshots(): List<Snapshot> {
+        val liveDataSnapshots: MutableList<Snapshot>? = getSnapshotsLiveData().awaitValue()
+        return liveDataSnapshots?.toList() ?: emptyList()
+    }
+
+    private suspend fun getSnapshotsLiveData(): LiveData<MutableList<Snapshot>?> {
         if (snapshots.size == 0) {
             val response = Response()
             try {
@@ -58,17 +78,19 @@ class RemoteDatabase(
 
         val resultList = mutableListOf<Snapshot>()
         resultList.addAll(snapshots)
-        snapshotsLiveData.value = resultList
+        snapshotsLiveData.postValue(resultList)
         return snapshotsLiveData
     }
 
-    suspend fun refreshSnapshots() {
-        snapshots.clear()
-        snapshotsLiveData.postValue(null)
-        getSnapshotsLiveData()
-    }
+//    suspend fun refreshSnapshots(): List<Snapshot> {
+//        snapshots.clear()
+//        snapshotsLiveData.postValue(null)
+//
+//        val liveDataSnapshots: MutableList<Snapshot>? = getSnapshotsLiveData().awaitValue()
+//        return liveDataSnapshots?.toList() ?: emptyList()
+//    }
 
-    suspend fun delete(snapshot: Snapshot): Boolean {
+    suspend fun deleteSnapshot(snapshot: Snapshot): Boolean {
         val index = snapshots.indexOf(snapshot)
 
         if (index != -1) {
@@ -88,7 +110,7 @@ class RemoteDatabase(
         return false
     }
 
-    suspend fun setLikeSnapshot(snapshot: Snapshot, checked: Boolean) {
+    suspend fun setLikeSnapshot(snapshot: Snapshot, checked: Boolean): List<Snapshot> {
         val snapshotRef = snapshotsDBRef.child(snapshot.id)
             .child(DataConstants.LIKE_LIST_PROPERTY)
             .child(DataConstants.currentUser.uid)
@@ -96,6 +118,7 @@ class RemoteDatabase(
         if (checked) snapshotRef.setValue(checked)
         else snapshotRef.setValue(null)
 
-        getSnapshotsLiveData()
+        val liveDataSnapshots: MutableList<Snapshot>? = getSnapshotsLiveData().awaitValue()
+        return liveDataSnapshots?.toList() ?: emptyList()
     }
 }

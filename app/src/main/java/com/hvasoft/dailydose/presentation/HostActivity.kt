@@ -13,12 +13,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.databinding.ActivityMainBinding
-import com.hvasoft.dailydose.presentation.addScreen.AddFragment
-import com.hvasoft.dailydose.presentation.homeScreen.HomeFragment
-import com.hvasoft.dailydose.presentation.profileScreen.ProfileFragment
-import com.hvasoft.dailydose.presentation.utils.FragmentAux
-import com.hvasoft.dailydose.presentation.utils.MainAux
+import com.hvasoft.dailydose.presentation.screens.add.AddFragment
+import com.hvasoft.dailydose.presentation.screens.home.HomeFragment
+import com.hvasoft.dailydose.presentation.screens.profile.ProfileFragment
+import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
+import com.hvasoft.dailydose.presentation.screens.utils.MainAux
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class HostActivity : AppCompatActivity(), MainAux {
 
     private var _binding: ActivityMainBinding? = null
