@@ -11,7 +11,7 @@ import androidx.recyclerview.widget.RecyclerView.ViewHolder
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.model.Snapshot
+import com.hvasoft.dailydose.data.network.model.Snapshot
 import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.databinding.ItemSnapshotBinding
 

@@ -23,7 +23,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.model.Snapshot
+import com.hvasoft.dailydose.data.network.model.Snapshot
 import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.databinding.FragmentAddBinding
 import com.hvasoft.dailydose.presentation.screens.utils.MainAux

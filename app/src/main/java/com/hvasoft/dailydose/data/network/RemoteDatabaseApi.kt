@@ -7,15 +7,14 @@ import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
-import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.model.Response
-import com.hvasoft.dailydose.data.model.Snapshot
+import com.hvasoft.dailydose.data.network.model.Snapshot
+import com.hvasoft.dailydose.data.network.model.SnapshotResponse
 import com.hvasoft.dailydose.data.utils.DataConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-class RemoteDatabaseService(
+class RemoteDatabaseApi(
     private val snapshotsDBRef: DatabaseReference = FirebaseDatabase.getInstance().reference
         .child(DataConstants.SNAPSHOTS_PATH),
     private val usersDBRef: DatabaseReference = FirebaseDatabase.getInstance().reference
@@ -53,9 +52,9 @@ class RemoteDatabaseService(
 
     private suspend fun getSnapshotsLiveData(): LiveData<MutableList<Snapshot>?> {
         if (snapshots.size == 0) {
-            val response = Response()
+            val snapshotResponse = SnapshotResponse()
             try {
-                response.snapshots = snapshotsDBRef.get().await().children.map { snapshotData ->
+                snapshotResponse.snapshots = snapshotsDBRef.get().await().children.map { snapshotData ->
                     val snapshot = snapshotData.getValue(Snapshot::class.java)!!
                     snapshot.id = snapshotData.key.toString()
 
@@ -64,7 +63,7 @@ class RemoteDatabaseService(
                             snapshot.userName = userData.child("userName").value.toString()
                             snapshot.userPhotoUrl = userData.child("photoUrl").value.toString()
                         } else {
-                            snapshot.userName = R.string.home_not_found_user_error.toString()
+                            snapshot.userName = "TEMPORARY - User not found - TEMPORARY"
                         }
                     }
 
@@ -72,7 +71,7 @@ class RemoteDatabaseService(
                     snapshot
                 }
             } catch (exception: Exception) {
-                response.exception = exception
+                snapshotResponse.exception = exception
             }
         }
 

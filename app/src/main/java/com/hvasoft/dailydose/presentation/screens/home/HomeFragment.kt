@@ -9,17 +9,22 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.model.Snapshot
+import com.hvasoft.dailydose.data.network.model.Snapshot
 import com.hvasoft.dailydose.databinding.FragmentHomeBinding
 import com.hvasoft.dailydose.presentation.screens.home.adapter.HomeAdapter
 import com.hvasoft.dailydose.presentation.screens.home.adapter.OnClickListener
 import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
 import com.hvasoft.dailydose.presentation.screens.utils.MainAux
+import com.hvasoft.dailydose.presentation.screens.utils.showPopUpMessage
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class HomeFragment : Fragment(), FragmentAux, OnClickListener {
@@ -38,13 +43,6 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
         return binding.root
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-
-        setupRecyclerView()
-        setupViewModel()
-    }
-
     override fun onAttach(context: Context) {
         super.onAttach(context)
         mainAux = activity as MainAux
@@ -55,10 +53,22 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
         refresh()
     }
 
+    override fun onDetach() {
+        super.onDetach()
+        mainAux = null
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
         mainAux = null
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        setupRecyclerView()
+        setupViewModel()
     }
 
     private fun setupRecyclerView() {
@@ -71,30 +81,64 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
         }
     }
 
+//    private fun setupViewModel() {
+//        with(binding) {
+//            homeViewModel.snapshotsState.observe(viewLifecycleOwner) { homeState ->
+//                when (homeState) {
+//                    is HomeState.Loading -> progressBar.isVisible = true
+//
+//                    is HomeState.Empty -> {
+//                        homeAdapter.submitList(null)
+//                        progressBar.isVisible = false
+//                        emptyStateLayout.isVisible = true
+//                    }
+//
+//                    is HomeState.Success -> {
+//                        progressBar.isVisible = false
+//                        emptyStateLayout.isVisible = false
+//                        homeAdapter.submitList(homeState.snapshots)
+//                    }
+//
+//                    is HomeState.Failure -> {
+//                        progressBar.isVisible = false
+//                        showPopUpMessage(
+//                            homeState.error?.errorMessageRes
+//                                ?: R.string.error_unknown
+//                        )
+//                    }
+//                }
+//            }
+//        }
+//    }
+
     private fun setupViewModel() {
-        with(binding) {
-            homeViewModel.snapshotsState.observe(viewLifecycleOwner) { homeState ->
-                when (homeState) {
-                    is HomeState.Loading -> progressBar.isVisible = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                with(binding) {
+                    homeViewModel.snapshotsState.collectLatest { homeState ->
+                        when (homeState) {
+                            is HomeState.Loading -> progressBar.isVisible = true
 
-                    is HomeState.Empty -> {
-                        homeAdapter.submitList(null)
-                        progressBar.isVisible = false
-                        emptyStateLayout.isVisible = true
-                    }
+                            is HomeState.Empty -> {
+                                homeAdapter.submitList(null)
+                                progressBar.isVisible = false
+                                emptyStateLayout.isVisible = true
+                            }
 
-                    is HomeState.Success -> {
-                        progressBar.isVisible = false
-                        emptyStateLayout.isVisible = false
-                        homeAdapter.submitList(homeState.snapshots)
-                    }
+                            is HomeState.Success -> {
+                                progressBar.isVisible = false
+                                emptyStateLayout.isVisible = false
+                                homeAdapter.submitList(homeState.snapshots)
+                            }
 
-                    is HomeState.Failure -> {
-                        progressBar.isVisible = false
-                        showPopUpMessage(
-                            homeState.error?.errorMessageRes
-                                ?: R.string.error_unknown
-                        )
+                            is HomeState.Failure -> {
+                                progressBar.isVisible = false
+                                showPopUpMessage(
+                                    homeState.errorMessage
+                                        ?: R.string.error_unknown
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -128,25 +172,12 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
      *   FragmentAux
      * */
     override fun refresh() {
-        if (homeAdapter.itemCount > 0) homeViewModel.refreshSnapshots()
+        if (homeAdapter.itemCount > 0) {
+//            Log.d("hva_test", "refresh: homeViewModel.getSnapshots was called")
+            homeViewModel.getSnapshots()
+        } //else
+//            Log.d("hva_test", "refresh: ELSE .itemCount = ${homeAdapter.itemCount}")
         binding.homeRecyclerView.smoothScrollToPosition(0)
-    }
-
-    private fun showPopUpMessage(messageRes: Int) {
-        view?.let { rootView ->
-            val snackBar = Snackbar.make(rootView, messageRes, Snackbar.LENGTH_LONG)
-            val params = snackBar.view.layoutParams as ViewGroup.MarginLayoutParams
-            val extraBottomMargin = resources.getDimensionPixelSize(R.dimen.common_padding_default)
-            params.setMargins(
-                params.leftMargin,
-                params.topMargin,
-                params.rightMargin,
-//                binding.floatingButton.height + params.bottomMargin + extraBottomMargin
-                params.bottomMargin + extraBottomMargin
-            )
-            snackBar.view.layoutParams = params
-            snackBar.show()
-        }
     }
 
     private fun shareSnapshot(snapshot: Snapshot) {
@@ -155,7 +186,8 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, shareText)
         }
-        val shareIntent = Intent.createChooser(intent, getString(R.string.home_description_title_share))
+        val shareIntent =
+            Intent.createChooser(intent, getString(R.string.home_description_title_share))
         startActivity(shareIntent)
     }
 

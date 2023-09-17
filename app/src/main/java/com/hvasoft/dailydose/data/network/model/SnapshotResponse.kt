@@ -1,6 +1,6 @@
-package com.hvasoft.dailydose.data.model
+package com.hvasoft.dailydose.data.network.model
 
-data class Response(
+data class SnapshotResponse(
     var snapshots: List<Snapshot>? = null,
     var exception: Exception? = null
 )

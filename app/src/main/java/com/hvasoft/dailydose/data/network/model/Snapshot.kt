@@ -1,4 +1,4 @@
-package com.hvasoft.dailydose.data.model
+package com.hvasoft.dailydose.data.network.model
 
 import com.google.firebase.database.Exclude
 import com.google.firebase.database.IgnoreExtraProperties
