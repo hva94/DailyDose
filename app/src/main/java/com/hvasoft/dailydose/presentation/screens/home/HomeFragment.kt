@@ -1,6 +1,7 @@
 package com.hvasoft.dailydose.presentation.screens.home
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -85,7 +86,6 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
                     is HomeState.Success -> {
                         progressBar.isVisible = false
                         emptyStateLayout.isVisible = false
-//                        homeAdapter.submitList(null)
                         homeAdapter.submitList(homeState.snapshots)
                     }
 
@@ -120,6 +120,10 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
         }
     }
 
+    override fun onShareSnapshot(snapshot: Snapshot) {
+        shareSnapshot(snapshot)
+    }
+
     /**
      *   FragmentAux
      * */
@@ -144,4 +148,15 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
             snackBar.show()
         }
     }
+
+    private fun shareSnapshot(snapshot: Snapshot) {
+        val shareText = getString(R.string.home_description_button_share, snapshot.title)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        val shareIntent = Intent.createChooser(intent, getString(R.string.home_description_title_share))
+        startActivity(shareIntent)
+    }
+
 }

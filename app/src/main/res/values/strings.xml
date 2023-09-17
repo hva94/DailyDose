@@ -15,7 +15,7 @@
     <string name="home_add">Upload</string>
     <string name="home_profile">Profile</string>
     <string name="home_not_found_user_data">First you have to add a profile picture from Profile</string>
-    <string name="home_profile_user_photo">User profile picture</string>
+    <string name="home_description_profile_user_photo">User profile picture</string>
 
     <string name="home_database_access_error">Could not access the database</string>
     <string name="home_not_found_user_error">User not found</string>
@@ -28,8 +28,10 @@
     <string name="profile_user_image_updated">Profile picture updated successfully</string>
     <string name="profile_user_image_failed">Profile picture could not be updated</string>
 
-    <string name="description_button_delete">Delete button</string>
-    <string name="description_img_publication_user">Image posted by user</string>
+    <string name="home_description_button_delete">Delete button</string>
+    <string name="home_description_button_share">I want to share with you %1$s</string>
+    <string name="home_description_title_share">Share Media</string>
+    <string name="home_description_img_publication_user">Image posted by user</string>
 
     <string name="options_open_camera">Take a photo with the camera</string>
     <string name="options_open_gallery">Choose an image from the gallery</string>

@@ -23,8 +23,8 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.data.model.Snapshot
+import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.databinding.FragmentAddBinding
 import com.hvasoft.dailydose.presentation.screens.utils.MainAux
 import dagger.hilt.android.AndroidEntryPoint
@@ -54,16 +54,19 @@ class AddFragment : Fragment() {
                 with(binding) {
                     imgPhoto.setImageURI(imageSelectedUri)
                     tilTitle.visibility = View.VISIBLE
-                    val timeInMillis = System.currentTimeMillis()
-                    val dateFormat = SimpleDateFormat("h:mma", Locale.getDefault())
-                    val timeString = dateFormat.format(Date(timeInMillis))
-                    val etTitleString = getString(R.string.add_default_title, timeString)
+                    val etTitleString = getString(R.string.add_default_title, getCurrentTimeString())
                     etTitle.setText(etTitleString)
                     tvMessage.text = getString(R.string.post_message_valid_title)
                     btnSelect.visibility = View.GONE
                 }
             }
         }
+
+    private fun getCurrentTimeString(): String {
+        val timeInMillis = System.currentTimeMillis()
+        val dateFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+        return dateFormat.format(Date(timeInMillis))
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,

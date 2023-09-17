@@ -7,12 +7,12 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.RecyclerView.*
+import androidx.recyclerview.widget.RecyclerView.ViewHolder
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.data.model.Snapshot
+import com.hvasoft.dailydose.data.utils.DataConstants
 import com.hvasoft.dailydose.databinding.ItemSnapshotBinding
 
 class HomeAdapter(private val listener: OnClickListener) :
@@ -63,15 +63,20 @@ class HomeAdapter(private val listener: OnClickListener) :
         val binding = ItemSnapshotBinding.bind(itemView)
 
         fun setListener(snapshot: Snapshot) {
-            binding.btnDelete.setOnClickListener {
-                listener.onDeleteSnapshot(snapshot)
-            }
-            binding.cbLike.setOnCheckedChangeListener { compoundButton, checked ->
-                if (compoundButton.isPressed) {
-                    val oldLikes = binding.cbLike.text.toString().toInt()
-                    val newLikes = if (checked) oldLikes + 1 else oldLikes - 1
-                    binding.cbLike.text = newLikes.toString()
-                    listener.onSetLikeSnapshot(snapshot, checked)
+            with(binding) {
+                btnDelete.setOnClickListener {
+                    listener.onDeleteSnapshot(snapshot)
+                }
+                cbLike.setOnCheckedChangeListener { compoundButton, checked ->
+                    if (compoundButton.isPressed) {
+                        val oldLikes = cbLike.text.toString().toInt()
+                        val newLikes = if (checked) oldLikes + 1 else oldLikes - 1
+                        cbLike.text = newLikes.toString()
+                        listener.onSetLikeSnapshot(snapshot, checked)
+                    }
+                }
+                btnShare.setOnClickListener {
+                    listener.onShareSnapshot(snapshot)
                 }
             }
         }

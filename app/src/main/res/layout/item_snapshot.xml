@@ -12,7 +12,7 @@
         android:layout_marginTop="@dimen/common_padding_default"
         android:layout_marginEnd="@dimen/common_padding_default"
         android:background="?attr/selectableItemBackground"
-        android:contentDescription="@string/description_button_delete"
+        android:contentDescription="@string/home_description_button_delete"
         android:src="@drawable/ic_delete"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -22,7 +22,7 @@
         android:layout_width="@dimen/card_img_size"
         android:layout_height="@dimen/card_img_size"
         android:layout_marginStart="@dimen/common_padding_min"
-        android:contentDescription="@string/home_profile_user_photo"
+        android:contentDescription="@string/home_description_profile_user_photo"
         app:layout_constraintBottom_toBottomOf="@id/tvUserName"
         app:layout_constraintEnd_toStartOf="@id/tvUserName"
         app:layout_constraintStart_toStartOf="parent"
@@ -32,41 +32,57 @@
         android:id="@+id/tvUserName"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/common_padding_min"
+        android:layout_marginStart="@dimen/common_padding_min"
+        android:layout_marginEnd="@dimen/common_padding_default"
         android:textAppearance="?attr/textAppearanceSubtitle2"
         app:layout_constraintBottom_toBottomOf="@id/btnDelete"
         app:layout_constraintEnd_toStartOf="@id/btnDelete"
         app:layout_constraintStart_toEndOf="@id/imgPhotoProfile"
         app:layout_constraintTop_toTopOf="@id/btnDelete"
-        tools:text="Nombre del usuario" />
+        tools:text="Username" />
 
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="@dimen/common_padding_min"
-        android:textAppearance="?attr/textAppearanceSubtitle2"
+        android:textAppearance="?attr/textAppearanceSubtitle1"
+        android:textSize="14sp"
         app:layout_constraintBottom_toBottomOf="@id/cbLike"
         app:layout_constraintStart_toEndOf="@id/cbLike"
         app:layout_constraintTop_toTopOf="@id/cbLike"
-        tools:text="Título de la instántanea" />
+        tools:text="Snapshot title" />
 
     <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/cbLike"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/common_padding_default"
+        android:layout_marginHorizontal="@dimen/common_padding_min"
         android:layout_marginBottom="@dimen/common_padding_default"
-        android:button="@drawable/ic_thumb_up"
+        android:button="@drawable/ic_like_hearth"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/tvTitle"/>
+
+    <ImageButton
+        android:id="@+id/btnShare"
+        android:layout_width="@dimen/dimen_48"
+        android:layout_height="@dimen/dimen_48"
+        android:layout_marginHorizontal="@dimen/common_padding_min"
+        android:layout_marginEnd="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:contentDescription="@string/home_description_button_share"
+        android:src="@drawable/ic_share"
+        app:layout_constraintBottom_toBottomOf="@id/cbLike"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/cbLike"/>
 
     <com.ortiz.touchview.TouchImageView
         android:id="@+id/imgPhoto"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginTop="@dimen/common_padding_default"
-        android:contentDescription="@string/description_img_publication_user"
+        android:contentDescription="@string/home_description_img_publication_user"
         app:layout_constraintBottom_toTopOf="@id/cbLike"
         app:layout_constraintDimensionRatio="H, 1:1"
         app:layout_constraintEnd_toEndOf="parent"
