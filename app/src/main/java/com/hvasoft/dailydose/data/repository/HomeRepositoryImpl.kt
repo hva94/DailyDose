@@ -1,15 +1,18 @@
 package com.hvasoft.dailydose.data.repository
 
-import com.hvasoft.dailydose.data.network.RemoteDatabaseApi
-import com.hvasoft.dailydose.data.network.model.Snapshot
-import com.hvasoft.dailydose.domain.common.response_handling.Resource
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseDataSource
+import com.hvasoft.dailydose.data.paging.SnapshotPagingSource
+import com.hvasoft.dailydose.data.utils.Constants
+import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.repository.HomeRepository
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 class HomeRepositoryImpl @Inject constructor(
-    private val remoteDatabaseApi: RemoteDatabaseApi
+    private val remoteDatabaseDataSource: RemoteDatabaseDataSource
 ) : HomeRepository {
 
 //    override suspend fun getSnapshots(): Result<List<Snapshot>> {
@@ -28,31 +31,38 @@ class HomeRepositoryImpl @Inject constructor(
 //        }
 //    }
 
-    override suspend fun getSnapshots(): Resource<List<Snapshot>> {
-        return try {
-//                val response: Response<SnapshotResponse> = remoteDatabaseApi.getSnapshots()
-//                if (response.isSuccessful) {
-//                    val snapshots = response.body()?.snapshots
-//                        ?.sortedByDescending { snapshot -> snapshot.dateTime }
-//                        ?.toMutableList()
-//                    emit(Resource.success(snapshots))
-//                } else {
-//                    emit(Resource.error(response.message(), null))
+//    override suspend fun getPagedSnapshots(): Resource<List<Snapshot>> {
+//        return try {
+////                val response: Response<SnapshotResponse> = remoteDatabaseApi.getSnapshots()
+////                if (response.isSuccessful) {
+////                    val snapshots = response.body()?.snapshots
+////                        ?.sortedByDescending { snapshot -> snapshot.dateTime }
+////                        ?.toMutableList()
+////                    emit(Resource.success(snapshots))
+////                } else {
+////                    emit(Resource.error(response.message(), null))
+////                }
+//                val snapshots = withContext(Dispatchers.IO) {
+//                    remoteDatabaseApi.getSnapshots()
 //                }
-                val snapshots = withContext(Dispatchers.IO) {
-                    remoteDatabaseApi.getSnapshots()
-                }
-                    .sortedByDescending { snapshot -> snapshot.dateTime }
-                    .toMutableList()
-                if (snapshots.isNotEmpty()) {
-                    Resource.success(snapshots)
-                } else {
-                    Resource.error("TEMPORARY - Network problem - TEMPORARY", null)
-                }
-            } catch (e: Throwable) {
-                Resource.error(e.cause?.localizedMessage ?: "An error occurred", null)
-            }
-        }
+//                    .sortedByDescending { snapshot -> snapshot.dateTime }
+//                    .toMutableList()
+//                if (snapshots.isNotEmpty()) {
+//                    Resource.success(snapshots)
+//                } else {
+//                    Resource.error("TODO - Network problem - TODO", null)
+//                }
+//            } catch (e: Throwable) {
+//                Resource.error(e.cause?.localizedMessage ?: "An error occurred", null)
+//            }
+//        }
+//    }
+
+    override suspend fun getPagedSnapshots(): Flow<PagingData<Snapshot>> {
+        return Pager(
+            config = PagingConfig(pageSize = Constants.SNAPSHOTS_ITEMS_PER_PAGE),
+            pagingSourceFactory = { SnapshotPagingSource(remoteDatabaseDataSource) }
+        ).flow
     }
 
 //    override suspend fun isLikeChanged(snapshot: Snapshot, isLiked: Boolean): Boolean {
@@ -76,4 +86,4 @@ class HomeRepositoryImpl @Inject constructor(
 //            false
 //        }
 //    }
-//}
+}

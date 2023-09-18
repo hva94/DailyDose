@@ -1,12 +1,12 @@
 package com.hvasoft.dailydose.domain.repository
 
-import com.hvasoft.dailydose.data.network.model.Snapshot
-import com.hvasoft.dailydose.domain.common.response_handling.Resource
+import androidx.paging.PagingData
+import com.hvasoft.dailydose.domain.model.Snapshot
+import kotlinx.coroutines.flow.Flow
 
 interface HomeRepository {
 
-//    suspend fun getSnapshots(): Result<List<Snapshot>>
-    suspend fun getSnapshots(): Resource<List<Snapshot>>
+    suspend fun getPagedSnapshots(): Flow<PagingData<Snapshot>>
 //    suspend fun isLikeChanged(snapshot: Snapshot, isLiked: Boolean): Boolean
 //    suspend fun isSnapshotDeleted(snapshot: Snapshot): Boolean
 

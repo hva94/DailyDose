@@ -4,19 +4,21 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.ViewHolder
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.network.model.Snapshot
-import com.hvasoft.dailydose.data.utils.DataConstants
+import com.hvasoft.dailydose.data.utils.Constants
 import com.hvasoft.dailydose.databinding.ItemSnapshotBinding
+import com.hvasoft.dailydose.domain.common.extension_functions.getLikeCountText
+import com.hvasoft.dailydose.domain.common.extension_functions.isLikeChecked
+import com.hvasoft.dailydose.domain.model.Snapshot
 
-class HomeAdapter(private val listener: OnClickListener) :
-    ListAdapter<Snapshot, ViewHolder>(SnapshotDiffCallback()) {
+class HomePagingAdapter(private val listener: OnClickListener) :
+    PagingDataAdapter<Snapshot, ViewHolder>(SnapshotDiffCallback()) {
 
     private lateinit var context: Context
 
@@ -30,31 +32,28 @@ class HomeAdapter(private val listener: OnClickListener) :
         val snapshot = getItem(position)
 
         with(holder as ViewHolder) {
-            setListener(snapshot)
-
-            with(binding) {
-                tvTitle.text = snapshot.title
-                cbLike.text = snapshot.likeList.keys.size.toString()
-                cbLike.isChecked =
-                    snapshot.likeList.containsKey(DataConstants.currentUser.uid)
-
-                Glide.with(context)
-                    .load(snapshot.photoUrl)
-                    .diskCacheStrategy(DiskCacheStrategy.ALL)
-                    .centerCrop()
-                    .into(imgPhoto)
-
-                tvUserName.text = snapshot.userName
-                Glide.with(context)
-                    .load(snapshot.userPhotoUrl)
-                    .diskCacheStrategy(DiskCacheStrategy.ALL)
-                    .centerCrop()
-                    .circleCrop()
-                    .into(imgPhotoProfile)
-
-                btnDelete.visibility =
-                    if (snapshot.idUserOwner == DataConstants.currentUser.uid)
-                        View.VISIBLE else View.INVISIBLE
+            snapshot?.let { snapshot ->
+                setListener(snapshot)
+                with(binding) {
+                    tvTitle.text = snapshot.title
+                    cbLike.text = snapshot.getLikeCountText()
+                    cbLike.isChecked = snapshot.isLikeChecked()
+                    Glide.with(context)
+                        .load(snapshot.photoUrl)
+                        .diskCacheStrategy(DiskCacheStrategy.ALL)
+                        .centerCrop()
+                        .into(imgPhoto)
+                    tvUserName.text = snapshot.userName
+                    Glide.with(context)
+                        .load(snapshot.userPhotoUrl)
+                        .diskCacheStrategy(DiskCacheStrategy.ALL)
+                        .centerCrop()
+                        .circleCrop()
+                        .into(imgPhotoProfile)
+                    btnDelete.visibility =
+                        if (snapshot.idUserOwner == Constants.currentUser.uid)
+                            View.VISIBLE else View.INVISIBLE
+                }
             }
         }
     }
@@ -84,7 +83,7 @@ class HomeAdapter(private val listener: OnClickListener) :
 
     class SnapshotDiffCallback : DiffUtil.ItemCallback<Snapshot>() {
         override fun areItemsTheSame(oldItem: Snapshot, newItem: Snapshot): Boolean =
-            oldItem.id == newItem.id
+            oldItem.snapshotId == newItem.snapshotId
 
         override fun areContentsTheSame(oldItem: Snapshot, newItem: Snapshot): Boolean =
             oldItem == newItem

@@ -11,7 +11,7 @@ import com.firebase.ui.auth.IdpResponse
 import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.auth.FirebaseAuth
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.utils.DataConstants
+import com.hvasoft.dailydose.data.utils.Constants
 import com.hvasoft.dailydose.databinding.ActivityMainBinding
 import com.hvasoft.dailydose.presentation.screens.add.AddFragment
 import com.hvasoft.dailydose.presentation.screens.home.HomeFragment
@@ -76,7 +76,7 @@ class HostActivity : AppCompatActivity(), MainAux {
                 )
                 mFragmentManager = null
             } else {
-                DataConstants.currentUser = it.currentUser!!
+                Constants.currentUser = it.currentUser!!
 
                 val fragmentProfile =
                     mFragmentManager?.findFragmentByTag(ProfileFragment::class.java.name)

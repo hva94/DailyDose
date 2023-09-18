@@ -12,12 +12,13 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.paging.PagingData
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.network.model.Snapshot
 import com.hvasoft.dailydose.databinding.FragmentHomeBinding
-import com.hvasoft.dailydose.presentation.screens.home.adapter.HomeAdapter
+import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.presentation.screens.home.adapter.HomePagingAdapter
 import com.hvasoft.dailydose.presentation.screens.home.adapter.OnClickListener
 import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
 import com.hvasoft.dailydose.presentation.screens.utils.MainAux
@@ -32,7 +33,7 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
     private val homeViewModel: HomeViewModel by viewModels()
-    private lateinit var homeAdapter: HomeAdapter
+    private lateinit var homePagingAdapter: HomePagingAdapter
 
     private var mainAux: MainAux? = null
 
@@ -72,12 +73,12 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
     }
 
     private fun setupRecyclerView() {
-        homeAdapter = HomeAdapter(this)
+        homePagingAdapter = HomePagingAdapter(this)
 
         binding.homeRecyclerView.apply {
             setHasFixedSize(true)
             layoutManager = LinearLayoutManager(context)
-            adapter = this@HomeFragment.homeAdapter
+            adapter = this@HomeFragment.homePagingAdapter
         }
     }
 
@@ -120,7 +121,7 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
                             is HomeState.Loading -> progressBar.isVisible = true
 
                             is HomeState.Empty -> {
-                                homeAdapter.submitList(null)
+                                homePagingAdapter.submitData(PagingData.empty())
                                 progressBar.isVisible = false
                                 emptyStateLayout.isVisible = true
                             }
@@ -128,7 +129,7 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
                             is HomeState.Success -> {
                                 progressBar.isVisible = false
                                 emptyStateLayout.isVisible = false
-                                homeAdapter.submitList(homeState.snapshots)
+                                homePagingAdapter.submitData(homeState.pagingData)
                             }
 
                             is HomeState.Failure -> {
@@ -172,9 +173,9 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
      *   FragmentAux
      * */
     override fun refresh() {
-        if (homeAdapter.itemCount > 0) {
+        if (homePagingAdapter.itemCount > 0) {
 //            Log.d("hva_test", "refresh: homeViewModel.getSnapshots was called")
-            homeViewModel.getSnapshots()
+            homeViewModel.fetchSnapshots()
         } //else
 //            Log.d("hva_test", "refresh: ELSE .itemCount = ${homeAdapter.itemCount}")
         binding.homeRecyclerView.smoothScrollToPosition(0)

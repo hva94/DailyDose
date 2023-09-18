@@ -26,7 +26,7 @@ import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.network.model.User
-import com.hvasoft.dailydose.data.utils.DataConstants
+import com.hvasoft.dailydose.data.utils.Constants
 import com.hvasoft.dailydose.databinding.FragmentProfileBinding
 import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
 import com.hvasoft.dailydose.presentation.screens.utils.MainAux
@@ -132,9 +132,9 @@ class ProfileFragment : Fragment(), FragmentAux {
 
     private fun setupFirebase() {
         snapshotsStorageRef =
-            FirebaseStorage.getInstance().reference.child(DataConstants.SNAPSHOTS_PATH)
+            FirebaseStorage.getInstance().reference.child(Constants.SNAPSHOTS_PATH)
         usersDatabaseRef =
-            FirebaseDatabase.getInstance().reference.child(DataConstants.USERS_PATH)
+            FirebaseDatabase.getInstance().reference.child(Constants.USERS_PATH)
     }
 
     private fun openCamera() {
@@ -171,7 +171,7 @@ class ProfileFragment : Fragment(), FragmentAux {
             binding.progressBar.visibility = View.VISIBLE
 
             val fileName = "userImageProfile"
-            val myStorageRef = snapshotsStorageRef.child(DataConstants.currentUser.uid)
+            val myStorageRef = snapshotsStorageRef.child(Constants.currentUser.uid)
                 .child(fileName)
 
             myStorageRef.putFile(imageSelectedUri!!)
@@ -187,8 +187,8 @@ class ProfileFragment : Fragment(), FragmentAux {
                 .addOnSuccessListener {
                     it.storage.downloadUrl.addOnSuccessListener { downloadUri ->
                         saveUserProfileData(
-                            DataConstants.currentUser.uid,
-                            DataConstants.currentUser.displayName.toString().trim(),
+                            Constants.currentUser.uid,
+                            Constants.currentUser.displayName.toString().trim(),
                             downloadUri.toString()
                         )
                     }
@@ -210,7 +210,7 @@ class ProfileFragment : Fragment(), FragmentAux {
 
     private fun showUserImageProfile() {
         usersDatabaseRef
-            .child(DataConstants.currentUser.uid)
+            .child(Constants.currentUser.uid)
             .get().addOnSuccessListener {
                 if (it.exists()) {
                     val photoUrl = it.child("photoUrl").value.toString()
@@ -231,8 +231,8 @@ class ProfileFragment : Fragment(), FragmentAux {
      * */
     override fun refresh() {
         with(binding) {
-            tvName.text = DataConstants.currentUser.displayName
-            tvEmail.text = DataConstants.currentUser.email
+            tvName.text = Constants.currentUser.displayName
+            tvEmail.text = Constants.currentUser.email
         }
     }
 }

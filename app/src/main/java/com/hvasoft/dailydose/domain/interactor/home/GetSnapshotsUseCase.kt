@@ -1,9 +1,12 @@
 package com.hvasoft.dailydose.domain.interactor.home
 
-import com.hvasoft.dailydose.data.network.model.Snapshot
-import com.hvasoft.dailydose.domain.common.response_handling.Resource
+import androidx.paging.ExperimentalPagingApi
+import androidx.paging.PagingData
+import com.hvasoft.dailydose.domain.model.Snapshot
+import kotlinx.coroutines.flow.Flow
 
 interface GetSnapshotsUseCase {
 
-    suspend operator fun invoke(): Resource<List<Snapshot>>
+    @ExperimentalPagingApi
+    operator fun invoke(): Flow<PagingData<Snapshot>>
 }

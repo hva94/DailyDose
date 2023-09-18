@@ -61,6 +61,9 @@ dependencies {
     implementation 'androidx.navigation:navigation-fragment-ktx:2.5.3'
     implementation 'androidx.navigation:navigation-ui-ktx:2.5.3'
 
+    // Pagination
+    implementation 'androidx.paging:paging-runtime-ktx:3.2.1'
+
     // Data Persistence - Room
     implementation "androidx.room:room-runtime:2.5.2"
     implementation "androidx.room:room-ktx:2.5.2"

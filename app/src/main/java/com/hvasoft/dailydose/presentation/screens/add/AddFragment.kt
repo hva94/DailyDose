@@ -23,9 +23,9 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.network.model.Snapshot
-import com.hvasoft.dailydose.data.utils.DataConstants
+import com.hvasoft.dailydose.data.utils.Constants
 import com.hvasoft.dailydose.databinding.FragmentAddBinding
+import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.presentation.screens.utils.MainAux
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -109,15 +109,15 @@ class AddFragment : Fragment() {
 
     private fun setupFirebase() {
         snapshotsStorageRef =
-            FirebaseStorage.getInstance().reference.child(DataConstants.SNAPSHOTS_PATH)
+            FirebaseStorage.getInstance().reference.child(Constants.SNAPSHOTS_PATH)
         snapshotsDatabaseRef =
-            FirebaseDatabase.getInstance().reference.child(DataConstants.SNAPSHOTS_PATH)
+            FirebaseDatabase.getInstance().reference.child(Constants.SNAPSHOTS_PATH)
     }
 
     private fun selectImage(context: Context) {
         FirebaseDatabase.getInstance()
-            .getReference(DataConstants.USERS_PATH)
-            .child(DataConstants.currentUser.uid)
+            .getReference(Constants.USERS_PATH)
+            .child(Constants.currentUser.uid)
             .get().addOnSuccessListener {
                 if (it.exists()) {
                     val items = resources.getStringArray(R.array.array_options_item)
@@ -173,7 +173,7 @@ class AddFragment : Fragment() {
             binding.progressBar.visibility = View.VISIBLE
 
             val key = snapshotsDatabaseRef.push().key!!
-            val myStorageRef = snapshotsStorageRef.child(DataConstants.currentUser.uid)
+            val myStorageRef = snapshotsStorageRef.child(Constants.currentUser.uid)
                 .child(key)
 
             myStorageRef.putFile(imageSelectedUri!!)
@@ -194,7 +194,7 @@ class AddFragment : Fragment() {
                             downloadUri.toString(),
                             binding.etTitle.text.toString().trim(),
                             System.currentTimeMillis(),
-                            DataConstants.currentUser.uid
+                            Constants.currentUser.uid
                         )
                     }
                 }
