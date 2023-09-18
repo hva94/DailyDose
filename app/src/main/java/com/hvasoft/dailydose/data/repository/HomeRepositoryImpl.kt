@@ -2,8 +2,8 @@ package com.hvasoft.dailydose.data.repository
 
 import com.hvasoft.dailydose.data.network.RemoteDatabaseApi
 import com.hvasoft.dailydose.data.network.model.Snapshot
-import com.hvasoft.dailydose.domain.HomeRepository
 import com.hvasoft.dailydose.domain.common.response_handling.Resource
+import com.hvasoft.dailydose.domain.repository.HomeRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject

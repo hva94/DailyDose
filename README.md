@@ -1,6 +1,7 @@
 # DailyDose Android Application - [linkedin.com/in/hva94](https://www.linkedin.com/in/hva94/)
 
-## Android Application for Medication Timing and Tracking. Kotlin, MVVM, Viewbinding, Firebase Services...
+## Android Application for Medication Timing and Tracking. <br> 
+Kotlin, MVVM, Viewbinding, Firebase Services...
 
 ## Work in progress... 👨‍💻
 

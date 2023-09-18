@@ -1,4 +1,4 @@
-package com.hvasoft.dailydose.domain
+package com.hvasoft.dailydose.domain.repository
 
 import com.hvasoft.dailydose.data.network.model.Snapshot
 import com.hvasoft.dailydose.domain.common.response_handling.Resource

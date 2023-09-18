@@ -1,8 +1,8 @@
 package com.hvasoft.dailydose.di
 
-import com.hvasoft.dailydose.domain.HomeRepository
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCaseImpl
+import com.hvasoft.dailydose.domain.repository.HomeRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

@@ -59,7 +59,7 @@
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="@dimen/common_padding_min"
         android:layout_marginBottom="@dimen/common_padding_default"
-        android:button="@drawable/ic_like_hearth"
+        android:button="@drawable/ic_drop"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toStartOf="@id/tvTitle"/>
