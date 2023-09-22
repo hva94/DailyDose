@@ -5,31 +5,29 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.ExperimentalPagingApi
 import androidx.paging.cachedIn
 import androidx.paging.map
-import com.hvasoft.dailydose.di.IoDispatcher
-import com.hvasoft.dailydose.domain.common.response_handling.Resource
-import com.hvasoft.dailydose.domain.common.response_handling.Status
+import com.hvasoft.dailydose.di.DispatcherIO
+import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
+import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
 import com.hvasoft.dailydose.domain.model.Snapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    @DispatcherIO private val dispatcherIO: CoroutineDispatcher,
     private val getSnapshotsUseCase: GetSnapshotsUseCase,
-//    private val isLikeChangedUseCase: IsLikeChangedUseCase,
-//    private val deleteSnapshotUseCase: DeleteSnapshotUseCase,
-    @IoDispatcher private val dispatcher: CoroutineDispatcher
+    private val toggleUserLikeUseCase: ToggleUserLikeUseCase,
+    private val deleteSnapshotUseCase: DeleteSnapshotUseCase
 ) : ViewModel() {
-
-//    private val _snapshotsState = MutableLiveData<HomeState>(HomeState.Loading)
-//    val snapshotsState: LiveData<HomeState> = _snapshotsState
 
     private var _snapshotsState = MutableStateFlow<HomeState>(HomeState.Loading)
     val snapshotsState = _snapshotsState.asStateFlow()
@@ -39,47 +37,39 @@ class HomeViewModel @Inject constructor(
     }
 
     @OptIn(ExperimentalPagingApi::class)
-    fun fetchSnapshots() = viewModelScope.launch(dispatcher) {
+    fun fetchSnapshots() {
         _snapshotsState.value = HomeState.Loading
-        getSnapshotsUseCase.invoke()
-            .flowOn(dispatcher)
-            .cachedIn(viewModelScope)
-            .map { page -> page.map { snapshot -> snapshot } }
-            .collect { pagingData ->
-                _snapshotsState.value = HomeState.Success(pagingData = pagingData)
+        viewModelScope.launch(dispatcherIO) {
+            try {
+                getSnapshotsUseCase.invoke()
+                    .cachedIn(viewModelScope)
+                    .flowOn(dispatcherIO)
+                    .map { page -> page.map { snapshot -> snapshot } }
+                    .collect { pagingData ->
+                        _snapshotsState.value = HomeState.Success(pagingData = pagingData)
+                    }
+            } catch (e: Exception) {
+                _snapshotsState.value = HomeState.Failure(e.localizedMessage)
             }
+        }
     }
 
-    fun setLikeSnapshot(snapshot: Snapshot, checked: Boolean) {
-        viewModelScope.launch(dispatcher) {
-//            handleResultBoolean(homeUseCases.isLikeChanged(snapshot, checked))
+    fun setLikeSnapshot(snapshot: Snapshot, isChecked: Boolean) {
+        viewModelScope.launch(dispatcherIO) {
+            toggleUserLikeUseCase.invoke(snapshot, isChecked)
         }
     }
 
     fun deleteSnapshot(snapshot: Snapshot) {
-        viewModelScope.launch(dispatcher) {
-//            handleResultSnapshotList(homeUseCases.deleteSnapshot(snapshot))
-        }
-    }
-
-    private fun handleUseCaseResult(resource: Resource<List<Snapshot>>) {
-        try {
-            when (resource.status) {
-                Status.SUCCESS -> {
-                    resource.data?.let { snapshots ->
-//                        Log.d("hva_test", "handleUseCaseResult: ${snapshots.size}")
-                        if (snapshots.isEmpty())
-                            _snapshotsState.update { HomeState.Empty }
-//                        else
-//                            _snapshotsState.update { HomeState.Success(snapshots) }
-                    }
+        viewModelScope.launch(dispatcherIO) {
+            try {
+                deleteSnapshotUseCase.invoke(snapshot)
+                withContext(Dispatchers.Main) {
+                    fetchSnapshots()
                 }
-                Status.ERROR -> _snapshotsState.update { HomeState.Failure(resource.errorMessage) }
-                Status.LOADING -> _snapshotsState.update { HomeState.Loading }
+            } catch (e: Exception) {
+                _snapshotsState.value = HomeState.Failure(e.localizedMessage)
             }
-        } catch (e: Exception) {
-//            val error = handleError(e.toError())
-            _snapshotsState.update { HomeState.Failure(e.localizedMessage) }
         }
     }
 }

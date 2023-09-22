@@ -8,14 +8,14 @@ import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.ViewHolder
-import com.bumptech.glide.Glide
-import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.utils.Constants
 import com.hvasoft.dailydose.databinding.ItemSnapshotBinding
-import com.hvasoft.dailydose.domain.common.extension_functions.getLikeCountText
-import com.hvasoft.dailydose.domain.common.extension_functions.isLikeChecked
+import com.hvasoft.dailydose.domain.common.extension_functions.isCurrentUserOwner
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.presentation.screens.common.getLikeCountText
+import com.hvasoft.dailydose.presentation.screens.common.getPostTimeLabel
+import com.hvasoft.dailydose.presentation.screens.common.loadImage
+import com.hvasoft.dailydose.presentation.screens.common.setDynamicTint
 
 class HomePagingAdapter(private val listener: OnClickListener) :
     PagingDataAdapter<Snapshot, ViewHolder>(SnapshotDiffCallback()) {
@@ -36,22 +36,18 @@ class HomePagingAdapter(private val listener: OnClickListener) :
                 setListener(snapshot)
                 with(binding) {
                     tvTitle.text = snapshot.title
-                    cbLike.text = snapshot.getLikeCountText()
-                    cbLike.isChecked = snapshot.isLikeChecked()
-                    Glide.with(context)
-                        .load(snapshot.photoUrl)
-                        .diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .centerCrop()
-                        .into(imgPhoto)
+                    cbLike.text = snapshot.likeCount
+                    cbLike.isChecked = snapshot.isLikedByCurrentUser
+                    cbLike.setDynamicTint(
+                        checkedColor = context.getColor(R.color.primaryColor),
+                        uncheckedColor = context.getColor(R.color.unSelectedColor)
+                    )
+                    imgPhoto.loadImage(snapshot.photoUrl)
                     tvUserName.text = snapshot.userName
-                    Glide.with(context)
-                        .load(snapshot.userPhotoUrl)
-                        .diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .centerCrop()
-                        .circleCrop()
-                        .into(imgPhotoProfile)
+                    tvPostTimeLabel.getPostTimeLabel(snapshot.dateTime)
+                    imgPhotoProfile.loadImage(snapshot.userPhotoUrl, isCircle = true)
                     btnDelete.visibility =
-                        if (snapshot.idUserOwner == Constants.currentUser.uid)
+                        if (snapshot.isCurrentUserOwner())
                             View.VISIBLE else View.INVISIBLE
                 }
             }
@@ -66,13 +62,9 @@ class HomePagingAdapter(private val listener: OnClickListener) :
                 btnDelete.setOnClickListener {
                     listener.onDeleteSnapshot(snapshot)
                 }
-                cbLike.setOnCheckedChangeListener { compoundButton, checked ->
-                    if (compoundButton.isPressed) {
-                        val oldLikes = cbLike.text.toString().toInt()
-                        val newLikes = if (checked) oldLikes + 1 else oldLikes - 1
-                        cbLike.text = newLikes.toString()
-                        listener.onSetLikeSnapshot(snapshot, checked)
-                    }
+                cbLike.setOnClickListener {
+                    cbLike.text = cbLike.getLikeCountText()
+                    listener.onSetLikeSnapshot(snapshot, cbLike.isChecked)
                 }
                 btnShare.setOnClickListener {
                     listener.onShareSnapshot(snapshot)
@@ -83,7 +75,7 @@ class HomePagingAdapter(private val listener: OnClickListener) :
 
     class SnapshotDiffCallback : DiffUtil.ItemCallback<Snapshot>() {
         override fun areItemsTheSame(oldItem: Snapshot, newItem: Snapshot): Boolean =
-            oldItem.snapshotId == newItem.snapshotId
+            oldItem.snapshotKey == newItem.snapshotKey
 
         override fun areContentsTheSame(oldItem: Snapshot, newItem: Snapshot): Boolean =
             oldItem == newItem

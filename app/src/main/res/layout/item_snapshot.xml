@@ -36,10 +36,22 @@
         android:layout_marginEnd="@dimen/common_padding_default"
         android:textAppearance="?attr/textAppearanceSubtitle2"
         app:layout_constraintBottom_toBottomOf="@id/btnDelete"
-        app:layout_constraintEnd_toStartOf="@id/btnDelete"
         app:layout_constraintStart_toEndOf="@id/imgPhotoProfile"
         app:layout_constraintTop_toTopOf="@id/btnDelete"
         tools:text="Username" />
+
+    <TextView
+        android:id="@+id/tvPostTimeLabel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/common_padding_min"
+        android:layout_marginEnd="@dimen/common_padding_default"
+        android:textAppearance="?attr/textAppearanceSubtitle1"
+        android:textSize="14sp"
+        app:layout_constraintBottom_toBottomOf="@id/btnDelete"
+        app:layout_constraintStart_toEndOf="@id/tvUserName"
+        app:layout_constraintTop_toTopOf="@id/btnDelete"
+        tools:text="3h" />
 
     <TextView
         android:id="@+id/tvTitle"
@@ -53,16 +65,17 @@
         app:layout_constraintTop_toTopOf="@id/cbLike"
         tools:text="Snapshot title" />
 
-    <com.google.android.material.checkbox.MaterialCheckBox
+    <CheckBox
         android:id="@+id/cbLike"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginHorizontal="@dimen/common_padding_min"
         android:layout_marginBottom="@dimen/common_padding_default"
         android:button="@drawable/ic_drop_dailydose"
+        android:checked="false"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/tvTitle"/>
+        app:layout_constraintEnd_toStartOf="@id/tvTitle"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <ImageButton
         android:id="@+id/btnShare"
@@ -75,7 +88,7 @@
         android:src="@drawable/ic_share"
         app:layout_constraintBottom_toBottomOf="@id/cbLike"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@id/cbLike"/>
+        app:layout_constraintTop_toTopOf="@id/cbLike" />
 
     <com.ortiz.touchview.TouchImageView
         android:id="@+id/imgPhoto"
@@ -88,5 +101,32 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnDelete" />
+
+    <Button
+        android:id="@+id/btnRetry"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/retry_text"
+        android:textColor="?attr/colorOnPrimary"
+        android:backgroundTint="?attr/colorPrimaryVariant"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/tvRetry"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/common_padding_min"
+        android:textAppearance="?attr/textAppearanceSubtitle1"
+        android:textSize="14sp"
+        android:textAlignment="center"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="@id/btnRetry"
+        app:layout_constraintEnd_toEndOf="@id/btnRetry"
+        app:layout_constraintTop_toBottomOf="@id/btnRetry"
+        tools:text="Something went wrong" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

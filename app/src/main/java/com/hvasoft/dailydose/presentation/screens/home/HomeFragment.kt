@@ -18,24 +18,24 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.databinding.FragmentHomeBinding
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.presentation.screens.common.HomeFragmentListener
+import com.hvasoft.dailydose.presentation.screens.common.HostActivityListener
+import com.hvasoft.dailydose.presentation.screens.common.showPopUpMessage
 import com.hvasoft.dailydose.presentation.screens.home.adapter.HomePagingAdapter
 import com.hvasoft.dailydose.presentation.screens.home.adapter.OnClickListener
-import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
-import com.hvasoft.dailydose.presentation.screens.utils.MainAux
-import com.hvasoft.dailydose.presentation.screens.utils.showPopUpMessage
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class HomeFragment : Fragment(), FragmentAux, OnClickListener {
+class HomeFragment : Fragment(), HomeFragmentListener, OnClickListener {
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
     private val homeViewModel: HomeViewModel by viewModels()
     private lateinit var homePagingAdapter: HomePagingAdapter
 
-    private var mainAux: MainAux? = null
+    private var hostActivityListener: HostActivityListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -46,30 +46,30 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
-        mainAux = activity as MainAux
+        hostActivityListener = activity as HostActivityListener
     }
 
     override fun onResume() {
         super.onResume()
-        refresh()
+        onRefresh()
     }
 
     override fun onDetach() {
         super.onDetach()
-        mainAux = null
+        hostActivityListener = null
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
-        mainAux = null
+        hostActivityListener = null
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        setupRecyclerView()
         setupViewModel()
+        setupRecyclerView()
     }
 
     private fun setupRecyclerView() {
@@ -82,61 +82,35 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
         }
     }
 
-//    private fun setupViewModel() {
-//        with(binding) {
-//            homeViewModel.snapshotsState.observe(viewLifecycleOwner) { homeState ->
-//                when (homeState) {
-//                    is HomeState.Loading -> progressBar.isVisible = true
-//
-//                    is HomeState.Empty -> {
-//                        homeAdapter.submitList(null)
-//                        progressBar.isVisible = false
-//                        emptyStateLayout.isVisible = true
-//                    }
-//
-//                    is HomeState.Success -> {
-//                        progressBar.isVisible = false
-//                        emptyStateLayout.isVisible = false
-//                        homeAdapter.submitList(homeState.snapshots)
-//                    }
-//
-//                    is HomeState.Failure -> {
-//                        progressBar.isVisible = false
-//                        showPopUpMessage(
-//                            homeState.error?.errorMessageRes
-//                                ?: R.string.error_unknown
-//                        )
-//                    }
-//                }
-//            }
-//        }
-//    }
-
     private fun setupViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 with(binding) {
                     homeViewModel.snapshotsState.collectLatest { homeState ->
                         when (homeState) {
-                            is HomeState.Loading -> progressBar.isVisible = true
+                            is HomeState.Loading -> {
+                                progressBar.isVisible = true
+                            }
 
                             is HomeState.Empty -> {
-                                homePagingAdapter.submitData(PagingData.empty())
                                 progressBar.isVisible = false
                                 emptyStateLayout.isVisible = true
+                                homePagingAdapter.submitData(PagingData.empty())
                             }
 
                             is HomeState.Success -> {
                                 progressBar.isVisible = false
                                 emptyStateLayout.isVisible = false
                                 homePagingAdapter.submitData(homeState.pagingData)
+                                homePagingAdapter.refresh()
                             }
 
                             is HomeState.Failure -> {
                                 progressBar.isVisible = false
                                 showPopUpMessage(
                                     homeState.errorMessage
-                                        ?: R.string.error_unknown
+                                        ?: R.string.error_unknown,
+                                    isError = true
                                 )
                             }
                         }
@@ -172,12 +146,8 @@ class HomeFragment : Fragment(), FragmentAux, OnClickListener {
     /**
      *   FragmentAux
      * */
-    override fun refresh() {
-        if (homePagingAdapter.itemCount > 0) {
-//            Log.d("hva_test", "refresh: homeViewModel.getSnapshots was called")
-            homeViewModel.fetchSnapshots()
-        } //else
-//            Log.d("hva_test", "refresh: ELSE .itemCount = ${homeAdapter.itemCount}")
+    override fun onRefresh() {
+        if (homePagingAdapter.itemCount > 0) homeViewModel.fetchSnapshots()
         binding.homeRecyclerView.smoothScrollToPosition(0)
     }
 

@@ -25,23 +25,23 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
+import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.network.model.User
-import com.hvasoft.dailydose.data.utils.Constants
 import com.hvasoft.dailydose.databinding.FragmentProfileBinding
-import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
-import com.hvasoft.dailydose.presentation.screens.utils.MainAux
+import com.hvasoft.dailydose.presentation.screens.common.HomeFragmentListener
+import com.hvasoft.dailydose.presentation.screens.common.HostActivityListener
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.io.File
 
 @AndroidEntryPoint
-class ProfileFragment : Fragment(), FragmentAux {
+class ProfileFragment : Fragment(), HomeFragmentListener {
 
     private lateinit var binding: FragmentProfileBinding
     private lateinit var snapshotsStorageRef: StorageReference
     private lateinit var usersDatabaseRef: DatabaseReference
 
-    private var mainAux: MainAux? = null
+    private var hostActivityListener: HostActivityListener? = null
     private var imageSelectedUri: Uri? = null
 
     private lateinit var context: Context
@@ -71,7 +71,7 @@ class ProfileFragment : Fragment(), FragmentAux {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        refresh()
+        onRefresh()
         setupButtons()
         setupFirebase()
         showUserImageProfile()
@@ -97,7 +97,7 @@ class ProfileFragment : Fragment(), FragmentAux {
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
-        mainAux = activity as MainAux
+        hostActivityListener = activity as HostActivityListener
     }
 
     private fun signOut() {
@@ -194,7 +194,7 @@ class ProfileFragment : Fragment(), FragmentAux {
                     }
                 }
                 .addOnFailureListener {
-                    mainAux?.showMessage(R.string.post_message_post_image_fail)
+                    hostActivityListener?.showPopUpMessage(R.string.post_message_post_image_fail)
                 }
         }
     }
@@ -203,9 +203,9 @@ class ProfileFragment : Fragment(), FragmentAux {
         val user = User(userName = userName, photoUrl = url)
         usersDatabaseRef.child(key).setValue(user)
             .addOnSuccessListener {
-                mainAux?.showMessage(R.string.profile_user_image_updated)
+                hostActivityListener?.showPopUpMessage(R.string.profile_user_image_updated)
             }
-            .addOnFailureListener { mainAux?.showMessage(R.string.profile_user_image_failed) }
+            .addOnFailureListener { hostActivityListener?.showPopUpMessage(R.string.profile_user_image_failed) }
     }
 
     private fun showUserImageProfile() {
@@ -222,14 +222,14 @@ class ProfileFragment : Fragment(), FragmentAux {
                         .into(binding.imgPhoto)
                 }
             }.addOnFailureListener {
-                mainAux?.showMessage(R.string.home_database_access_error)
+                hostActivityListener?.showPopUpMessage(R.string.home_database_access_error)
             }
     }
 
     /**
      *   FragmentAux
      * */
-    override fun refresh() {
+    override fun onRefresh() {
         with(binding) {
             tvName.text = Constants.currentUser.displayName
             tvEmail.text = Constants.currentUser.email

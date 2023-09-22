@@ -2,13 +2,15 @@ package com.hvasoft.dailydose.data.paging
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
-import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseDataSource
-import com.hvasoft.dailydose.data.utils.Constants.INDEX_ONE
+import com.hvasoft.dailydose.data.common.Constants.INDEX_ONE
+import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
+import com.hvasoft.dailydose.domain.common.extension_functions.getLikeCountText
+import com.hvasoft.dailydose.domain.common.extension_functions.isLikedByCurrentUser
 import com.hvasoft.dailydose.domain.model.Snapshot
 import kotlinx.coroutines.flow.firstOrNull
 
 class SnapshotPagingSource(
-    private val remoteDatabaseDataSource: RemoteDatabaseDataSource
+    private val remoteDatabaseService: RemoteDatabaseService
 ) : PagingSource<Int, Snapshot>() {
 
     override fun getRefreshKey(state: PagingState<Int, Snapshot>): Int? {
@@ -21,18 +23,7 @@ class SnapshotPagingSource(
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Snapshot> {
         val currentPage = params.key ?: INDEX_ONE
         return try {
-            val snapshotsWithoutProfileAndUserNames: List<Snapshot> =
-                remoteDatabaseDataSource.getSnapshots().firstOrNull() ?: emptyList()
-            val snapshotsWithoutUserNames = snapshotsWithoutProfileAndUserNames.map { snapshot ->
-                snapshot.userPhotoUrl =
-                    remoteDatabaseDataSource.getUserPhotoUrl(snapshot.idUserOwner).firstOrNull() ?: ""
-                snapshot
-            }
-            val snapshots = snapshotsWithoutUserNames.map { snapshot ->
-                snapshot.userName =
-                    remoteDatabaseDataSource.getUserName(snapshot.idUserOwner).firstOrNull() ?: ""
-                snapshot
-            }
+            val snapshots = getSnapshots()
             if (snapshots.isNotEmpty()) {
                 val endOfPaginationReached = snapshots.isEmpty()
                 LoadResult.Page(
@@ -41,10 +32,28 @@ class SnapshotPagingSource(
                     nextKey = if (endOfPaginationReached) null else currentPage + 1
                 )
             } else {
-                LoadResult.Error(Throwable("TODO - Network problem, the snapshot list is empty - TODO"))
+                LoadResult.Error(
+                    Exception("Failed to load data")
+                )
             }
         } catch (e: Exception) {
             LoadResult.Error(e)
+        }
+    }
+
+    private suspend fun getSnapshots(): List<Snapshot> {
+        val initialSnapshots = remoteDatabaseService.getSnapshots().firstOrNull() ?: emptyList()
+        return initialSnapshots.map { snapshot ->
+            val userPhotoUrl =
+                remoteDatabaseService.getUserPhotoUrl(snapshot.idUserOwner).firstOrNull() ?: ""
+            val userName =
+                remoteDatabaseService.getUserName(snapshot.idUserOwner).firstOrNull() ?: ""
+            snapshot.apply {
+                this.userPhotoUrl = userPhotoUrl
+                this.userName = userName
+                this.isLikedByCurrentUser = isLikedByCurrentUser()
+                this.likeCount = getLikeCountText()
+            }
         }
     }
 }

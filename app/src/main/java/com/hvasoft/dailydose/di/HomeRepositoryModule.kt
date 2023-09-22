@@ -4,10 +4,10 @@ import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
-import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseDataSource
-import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseDataSourceImpl
+import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
+import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseServiceImpl
 import com.hvasoft.dailydose.data.repository.HomeRepositoryImpl
-import com.hvasoft.dailydose.data.utils.Constants
 import com.hvasoft.dailydose.domain.repository.HomeRepository
 import dagger.Module
 import dagger.Provides
@@ -31,10 +31,10 @@ object HomeRepositoryModule {
     @Provides
     @Singleton
     fun providesHomeRepository(
-        remoteDatabaseDataSource: RemoteDatabaseDataSource
+        remoteDatabaseService: RemoteDatabaseService
     ): HomeRepository =
         HomeRepositoryImpl(
-            remoteDatabaseDataSource
+            remoteDatabaseService
         )
 
     @Provides
@@ -63,10 +63,9 @@ object HomeRepositoryModule {
         @SnapshotsDatabaseQualifier snapshotsDatabase: DatabaseReference,
         @UsersDatabaseQualifier usersDatabase: DatabaseReference,
         snapshotsStorage: StorageReference
-    ) : RemoteDatabaseDataSource = RemoteDatabaseDataSourceImpl(
+    ) : RemoteDatabaseService = RemoteDatabaseServiceImpl(
         snapshotsDatabase,
         usersDatabase,
         snapshotsStorage
     )
-
 }

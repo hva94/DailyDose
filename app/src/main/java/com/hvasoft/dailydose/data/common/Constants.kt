@@ -1,4 +1,4 @@
-package com.hvasoft.dailydose.data.utils
+package com.hvasoft.dailydose.data.common
 
 import com.google.firebase.auth.FirebaseUser
 

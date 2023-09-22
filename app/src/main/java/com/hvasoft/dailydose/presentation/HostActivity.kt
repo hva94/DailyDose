@@ -11,19 +11,19 @@ import com.firebase.ui.auth.IdpResponse
 import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.auth.FirebaseAuth
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.utils.Constants
-import com.hvasoft.dailydose.databinding.ActivityMainBinding
+import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.databinding.ActivityHostBinding
 import com.hvasoft.dailydose.presentation.screens.add.AddFragment
+import com.hvasoft.dailydose.presentation.screens.common.HomeFragmentListener
+import com.hvasoft.dailydose.presentation.screens.common.HostActivityListener
 import com.hvasoft.dailydose.presentation.screens.home.HomeFragment
 import com.hvasoft.dailydose.presentation.screens.profile.ProfileFragment
-import com.hvasoft.dailydose.presentation.screens.utils.FragmentAux
-import com.hvasoft.dailydose.presentation.screens.utils.MainAux
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class HostActivity : AppCompatActivity(), MainAux {
+class HostActivity : AppCompatActivity(), HostActivityListener {
 
-    private var _binding: ActivityMainBinding? = null
+    private var _binding: ActivityHostBinding? = null
     private val binding get() = _binding!!
 
     private lateinit var activeFragment: Fragment
@@ -45,9 +45,13 @@ class HostActivity : AppCompatActivity(), MainAux {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        _binding = ActivityMainBinding.inflate(layoutInflater)
+        _binding = ActivityHostBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setupAuth()
+    }
 
+    override fun onResumeFragments() {
+        super.onResumeFragments()
         setupAuth()
     }
 
@@ -81,7 +85,7 @@ class HostActivity : AppCompatActivity(), MainAux {
                 val fragmentProfile =
                     mFragmentManager?.findFragmentByTag(ProfileFragment::class.java.name)
                 fragmentProfile?.let {
-                    (it as FragmentAux).refresh()
+                    (it as HomeFragmentListener).onRefresh()
                 }
 
                 if (mFragmentManager == null) {
@@ -142,7 +146,7 @@ class HostActivity : AppCompatActivity(), MainAux {
 
         binding.bottomNav.setOnItemReselectedListener {
             when (it.itemId) {
-                R.id.action_home -> (homeFragment as FragmentAux).refresh()
+                R.id.action_home -> (homeFragment as HomeFragmentListener).onRefresh()
             }
         }
     }
@@ -158,11 +162,21 @@ class HostActivity : AppCompatActivity(), MainAux {
     }
 
     /**
-     *   MainAux
+     *   HostActivityListener
      **/
-    override fun showMessage(resId: Int, duration: Int) {
+    override fun showPopUpMessage(resId: Int, duration: Int) {
         Snackbar.make(binding.root, resId, duration)
             .setAnchorView(binding.bottomNav)
             .show()
+    }
+
+    override fun onSnapshotPosted() {
+        val fragmentManager = supportFragmentManager
+        val homeFragment = fragmentManager.findFragmentByTag(HomeFragment::class.java.name) as HomeFragment?
+        if (homeFragment != null) {
+            fragmentManager.beginTransaction().hide(activeFragment).show(homeFragment).commit()
+            activeFragment = homeFragment
+            binding.bottomNav.selectedItemId = R.id.action_home
+        }
     }
 }

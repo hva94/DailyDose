@@ -23,10 +23,10 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.utils.Constants
+import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.network.model.SnapshotDTO
 import com.hvasoft.dailydose.databinding.FragmentAddBinding
-import com.hvasoft.dailydose.domain.model.Snapshot
-import com.hvasoft.dailydose.presentation.screens.utils.MainAux
+import com.hvasoft.dailydose.presentation.screens.common.HostActivityListener
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.io.File
@@ -35,7 +35,7 @@ import java.util.Date
 import java.util.Locale
 
 @AndroidEntryPoint
-class AddFragment : Fragment() {
+class AddFragment : Fragment(), HostActivityListener {
 
     private var _binding: FragmentAddBinding? = null
     private val binding get() = _binding!!
@@ -44,7 +44,7 @@ class AddFragment : Fragment() {
     private lateinit var snapshotsStorageRef: StorageReference
     private lateinit var imageFile: File
 
-    private var mainAux: MainAux? = null
+    private var hostActivityListener: HostActivityListener? = null
     private var imageSelectedUri: Uri? = null
 
     private val selectImageResult =
@@ -54,7 +54,8 @@ class AddFragment : Fragment() {
                 with(binding) {
                     imgPhoto.setImageURI(imageSelectedUri)
                     tilTitle.visibility = View.VISIBLE
-                    val etTitleString = getString(R.string.add_default_title, getCurrentTimeString())
+                    val etTitleString =
+                        getString(R.string.add_default_title, getCurrentTimeString())
                     etTitle.setText(etTitleString)
                     tvMessage.text = getString(R.string.post_message_valid_title)
                     btnSelect.visibility = View.GONE
@@ -86,7 +87,11 @@ class AddFragment : Fragment() {
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
-        mainAux = activity as MainAux
+        try {
+            hostActivityListener = context as HostActivityListener
+        } catch (e: ClassCastException) {
+            throw ClassCastException("$context must implement OnSnapshotPostedListener")
+        }
     }
 
     override fun onDestroy() {
@@ -132,10 +137,10 @@ class AddFragment : Fragment() {
                         }
                         .show()
                 } else {
-                    mainAux?.showMessage(R.string.home_not_found_user_data)
+                    hostActivityListener?.showPopUpMessage(R.string.home_not_found_user_data)
                 }
             }.addOnFailureListener {
-                mainAux?.showMessage(R.string.home_database_access_error)
+                hostActivityListener?.showPopUpMessage(R.string.home_database_access_error)
             }
     }
 
@@ -199,7 +204,7 @@ class AddFragment : Fragment() {
                     }
                 }
                 .addOnFailureListener {
-                    mainAux?.showMessage(R.string.post_message_post_image_fail)
+                    hostActivityListener?.showPopUpMessage(R.string.post_message_post_image_fail)
                 }
         }
     }
@@ -211,12 +216,16 @@ class AddFragment : Fragment() {
         dateTime: Long,
         userId: String
     ) {
-        val snapshot = Snapshot(idUserOwner = userId, title = title, dateTime = dateTime, photoUrl = url)
+        val snapshot = SnapshotDTO(
+            idUserOwner = userId,
+            title = title,
+            dateTime = dateTime,
+            photoUrl = url
+        )
         snapshotsDatabaseRef.child(key).setValue(snapshot)
             .addOnSuccessListener {
                 hideKeyboard()
-                mainAux?.showMessage(R.string.post_message_post_success)
-
+                hostActivityListener?.showPopUpMessage(R.string.post_message_post_success)
                 with(binding) {
                     tilTitle.visibility = View.GONE
                     etTitle.setText("")
@@ -224,9 +233,10 @@ class AddFragment : Fragment() {
                     tvMessage.text = getString(R.string.post_message_title)
                     imgPhoto.setImageDrawable(null)
                 }
+                hostActivityListener?.onSnapshotPosted()
             }
             .addOnCompleteListener { enableUI(true) }
-            .addOnFailureListener { mainAux?.showMessage(R.string.post_message_post_fail) }
+            .addOnFailureListener { hostActivityListener?.showPopUpMessage(R.string.post_message_post_fail) }
 
     }
 
@@ -255,5 +265,13 @@ class AddFragment : Fragment() {
             btnPost.isEnabled = enable
             tilTitle.isEnabled = enable
         }
+    }
+
+    override fun showPopUpMessage(resId: Int, duration: Int) {
+        hostActivityListener?.showPopUpMessage(resId, duration)
+    }
+
+    override fun onSnapshotPosted() {
+        hostActivityListener?.onSnapshotPosted()
     }
 }
