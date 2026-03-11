@@ -1,16 +1,25 @@
+# Build
 /build
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
 /captures
 .externalNativeBuild
 .cxx
+
+# Gradle
+.gradle
+/local.properties
 local.properties
-/app/google-services.json
+
+# IDE
+*.iml
+.idea/*
+!.idea/codeStyles/
+!.idea/codeStyles/**
+
+# OS
+.DS_Store
+
+# Firebase
+app/google-services.json
+firebase.json
+.firebaserc
+.firebase/*

@@ -67,7 +67,7 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                         val snapshots = snapshotsWithKeys.map { it.second!! }
                         trySend(snapshots)
                     } else {
-                        throw Exception("Failed to load data")
+                        trySend(emptyList())
                     }
                 }
 
@@ -91,7 +91,7 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                         val userPhotoUrl = snapshot.getValue<String>()!!
                         trySend(userPhotoUrl)
                     } else {
-                        throw Exception("Failed to load data")
+                        trySend("")
                     }
                 }
 
@@ -116,7 +116,7 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                         val userName = snapshot.getValue<String>()!!
                         trySend(userName)
                     } else {
-                        throw Exception("Failed to load data")
+                        trySend("")
                     }
                 }
 

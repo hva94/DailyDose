@@ -21,21 +21,13 @@ class SnapshotPagingSource(
     }
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Snapshot> {
-        val currentPage = params.key ?: INDEX_ONE
         return try {
             val snapshots = getSnapshots()
-            if (snapshots.isNotEmpty()) {
-                val endOfPaginationReached = snapshots.isEmpty()
-                LoadResult.Page(
-                    data = snapshots,
-                    prevKey = if (currentPage == INDEX_ONE) null else currentPage - 1,
-                    nextKey = if (endOfPaginationReached) null else currentPage + 1
-                )
-            } else {
-                LoadResult.Error(
-                    Exception("Failed to load data")
-                )
-            }
+            LoadResult.Page(
+                data = snapshots,
+                prevKey = null,
+                nextKey = null
+            )
         } catch (e: Exception) {
             LoadResult.Error(e)
         }

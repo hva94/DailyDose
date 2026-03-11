@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:name=".DailyDoseApp"
@@ -16,7 +16,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DailyDose"
-        tools:targetApi="33">
+        tools:targetApi="36">
 
         <provider
             android:authorities="com.hvasoft.fileprovider"
@@ -31,8 +31,12 @@
         <activity
             android:name="com.hvasoft.dailydose.presentation.HostActivity"
             android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
             android:exported="true"
             tools:ignore="LockedOrientationActivity">
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+                android:value="true" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

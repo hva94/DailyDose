@@ -11,7 +11,9 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
 import androidx.core.content.FileProvider
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
@@ -62,6 +64,21 @@ class AddFragment : Fragment(), HostActivityListener {
                 }
             }
         }
+
+    private val pickImageResult = registerForActivityResult(PickVisualMedia()) { uri ->
+        if (uri != null) {
+            imageSelectedUri = uri
+            with(binding) {
+                imgPhoto.setImageURI(imageSelectedUri)
+                tilTitle.visibility = View.VISIBLE
+                val etTitleString =
+                    getString(R.string.add_default_title, getCurrentTimeString())
+                etTitle.setText(etTitleString)
+                tvMessage.text = getString(R.string.post_message_valid_title)
+                btnSelect.visibility = View.GONE
+            }
+        }
+    }
 
     private fun getCurrentTimeString(): String {
         val timeInMillis = System.currentTimeMillis()
@@ -120,28 +137,17 @@ class AddFragment : Fragment(), HostActivityListener {
     }
 
     private fun selectImage(context: Context) {
-        FirebaseDatabase.getInstance()
-            .getReference(Constants.USERS_PATH)
-            .child(Constants.currentUser.uid)
-            .get().addOnSuccessListener {
-                if (it.exists()) {
-                    val items = resources.getStringArray(R.array.array_options_item)
-                    MaterialAlertDialogBuilder(context)
-                        .setTitle(R.string.dialog_options_title)
-                        .setItems(items) { _, item ->
-                            when (item) {
-                                0 -> openCamera()
+        val items = resources.getStringArray(R.array.array_options_item)
+        MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.dialog_options_title)
+            .setItems(items) { _, item ->
+                when (item) {
+                    0 -> openCamera()
 
-                                1 -> openGallery()
-                            }
-                        }
-                        .show()
-                } else {
-                    hostActivityListener?.showPopUpMessage(R.string.home_not_found_user_data)
+                    1 -> openGallery()
                 }
-            }.addOnFailureListener {
-                hostActivityListener?.showPopUpMessage(R.string.home_database_access_error)
             }
+            .show()
     }
 
     private fun openCamera() {
@@ -165,11 +171,7 @@ class AddFragment : Fragment(), HostActivityListener {
     }
 
     private fun openGallery() {
-        val openGalleryIntent = Intent(
-            Intent.ACTION_PICK,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        )
-        selectImageResult.launch(openGalleryIntent)
+        pickImageResult.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly))
     }
 
     private fun postSnapshot() {

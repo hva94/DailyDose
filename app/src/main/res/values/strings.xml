@@ -21,9 +21,23 @@
     <string name="home_not_found_user_error">User not found</string>
     <string name="home_update_photo_error">Error updating photo</string>
     <string name="home_delete_photo_error">Error deleting photo</string>
+    <string name="home_share_image_error">Could not prepare the image for sharing</string>
     <string name="home_unknown_error">Unknown error</string>
+    <string name="update_dialog_title">Update available</string>
+    <string name="update_dialog_message">A newer version of DailyDose is available. Do you want to update now?</string>
+    <string name="update_dialog_confirm">Update</string>
+    <string name="update_download_started">Downloading update…</string>
+    <string name="update_download_failed">Could not download the update</string>
+    <string name="update_permission_needed">Allow installs from this app to continue the update</string>
+    <string name="update_permission_denied">Install permission is still required to continue the update</string>
+    <string name="update_install_failed">Could not start the installer</string>
 
     <string name="profile_logout_success">¡See you soon!</string>
+    <string name="profile_hint_name">Your name</string>
+    <string name="profile_button_edit_name">Edit name</string>
+    <string name="profile_button_save_name">Save name</string>
+    <string name="profile_name_updated">Name updated successfully</string>
+    <string name="profile_name_empty_error">Please enter your name</string>
     <string name="profile_database_write_error">Failed to update username</string>
     <string name="profile_user_image_updated">Profile picture updated successfully</string>
     <string name="profile_user_image_failed">Profile picture could not be updated</string>
@@ -54,7 +68,7 @@
     <string name="error_unknown">Something went wrong</string>
 
     <string name="text_no_snapshots">No Snapshots Found!</string>
-    <string name="text_empty_state_snapshots">There are no posts here. \n Add a new one with the Upload Screen!</string>
+    <string name="text_empty_state_snapshots">There are no posts here. \n Add a new one with the Drop it Screen!</string>
 
     <plurals name="years_date_time_label_text">
         <item quantity="one">%1$d year ago</item>

@@ -10,9 +10,12 @@ import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -20,6 +23,8 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.firebase.ui.auth.AuthUI
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
@@ -58,6 +63,17 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
             }
         }
 
+    private val pickImageResult =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) {
+                imageSelectedUri = uri
+                with(binding) {
+                    imgPhoto.setImageURI(imageSelectedUri)
+                    postUserImageProfile()
+                }
+            }
+        }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -74,12 +90,15 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
         onRefresh()
         setupButtons()
         setupFirebase()
-        showUserImageProfile()
+        loadUserProfile()
     }
 
     private fun setupButtons() {
         with(binding) {
             btnSelect.setOnClickListener { selectImage(btnSelect.context) }
+            btnEditName.setOnClickListener { showNameEditor(true) }
+            btnCancelName.setOnClickListener { cancelNameEditing() }
+            btnSaveName.setOnClickListener { updateUserName() }
             btnLogout.setOnClickListener {
                 context.let {
                     MaterialAlertDialogBuilder(it)
@@ -107,6 +126,8 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
                     Toast.makeText(context, R.string.profile_logout_success, Toast.LENGTH_SHORT)
                         .show()
                     binding.tvName.text = ""
+                    binding.etName.setText("")
+                    showNameEditor(true)
                     binding.tvEmail.text = ""
                     binding.imgPhoto.setImageResource(0)
                     (activity?.findViewById(R.id.bottomNav) as?
@@ -158,12 +179,7 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
     }
 
     private fun openGallery() {
-        val openGalleryIntent = Intent(
-            Intent.ACTION_PICK,
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        )
-        selectImageResult.launch(openGalleryIntent)
-        showUserImageProfile()
+        pickImageResult.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     private fun postUserImageProfile() {
@@ -187,9 +203,10 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
                 .addOnSuccessListener {
                     it.storage.downloadUrl.addOnSuccessListener { downloadUri ->
                         saveUserProfileData(
-                            Constants.currentUser.uid,
-                            Constants.currentUser.displayName.toString().trim(),
-                            downloadUri.toString()
+                            userName = binding.etName.text.toString().trim(),
+                            photoUrl = downloadUri.toString(),
+                            successMessageRes = R.string.profile_user_image_updated,
+                            failureMessageRes = R.string.profile_user_image_failed
                         )
                     }
                 }
@@ -199,31 +216,141 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
         }
     }
 
-    private fun saveUserProfileData(key: String, userName: String, url: String) {
-        val user = User(userName = userName, photoUrl = url)
-        usersDatabaseRef.child(key).setValue(user)
-            .addOnSuccessListener {
-                hostActivityListener?.showPopUpMessage(R.string.profile_user_image_updated)
+    private fun updateUserName() {
+        val newName = binding.etName.text.toString().trim()
+        if (newName.isEmpty()) {
+            binding.tilName.error = getString(R.string.profile_name_empty_error)
+            return
+        }
+
+        binding.tilName.error = null
+        binding.progressBar.visibility = View.VISIBLE
+
+        val profileUpdates = UserProfileChangeRequest.Builder()
+            .setDisplayName(newName)
+            .build()
+
+        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+        currentUser.updateProfile(profileUpdates)
+            .continueWithTask { task ->
+                if (!task.isSuccessful) {
+                    throw task.exception ?: IllegalStateException("Failed to update user profile")
+                }
+                saveUserProfileDataTask(
+                    userName = newName,
+                    photoUrl = null
+                )
             }
-            .addOnFailureListener { hostActivityListener?.showPopUpMessage(R.string.profile_user_image_failed) }
+            .addOnSuccessListener {
+                Constants.currentUser = currentUser
+                binding.progressBar.visibility = View.INVISIBLE
+                binding.tvName.text = newName
+                showNameEditor(false)
+                hideKeyboard()
+                hostActivityListener?.showPopUpMessage(R.string.profile_name_updated)
+            }
+            .addOnFailureListener {
+                binding.progressBar.visibility = View.INVISIBLE
+                hostActivityListener?.showPopUpMessage(R.string.profile_database_write_error)
+            }
     }
 
-    private fun showUserImageProfile() {
+    private fun saveUserProfileData(
+        userName: String? = null,
+        photoUrl: String? = null,
+        successMessageRes: Int,
+        failureMessageRes: Int
+    ) {
+        saveUserProfileDataTask(userName, photoUrl)
+            .addOnSuccessListener {
+                binding.progressBar.visibility = View.INVISIBLE
+                if (!userName.isNullOrEmpty()) {
+                    binding.tvName.text = userName
+                }
+                if (photoUrl != null) {
+                    showUserImageProfile(photoUrl)
+                }
+                hostActivityListener?.showPopUpMessage(successMessageRes)
+            }
+            .addOnFailureListener {
+                binding.progressBar.visibility = View.INVISIBLE
+                hostActivityListener?.showPopUpMessage(failureMessageRes)
+            }
+    }
+
+    private fun saveUserProfileDataTask(
+        userName: String? = null,
+        photoUrl: String? = null
+    ) = usersDatabaseRef.child(Constants.currentUser.uid)
+        .get()
+        .continueWithTask { task ->
+            if (!task.isSuccessful) {
+                throw task.exception ?: IllegalStateException("Failed to load user data")
+            }
+
+            val currentUserData = task.result?.getValue(User::class.java) ?: User()
+            val updatedUser = currentUserData.copy(
+                userName = userName ?: currentUserData.userName.ifEmpty {
+                    Constants.currentUser.displayName.orEmpty()
+                },
+                photoUrl = photoUrl ?: currentUserData.photoUrl
+            )
+
+            usersDatabaseRef.child(Constants.currentUser.uid).setValue(updatedUser)
+        }
+
+    private fun loadUserProfile() {
         usersDatabaseRef
             .child(Constants.currentUser.uid)
             .get().addOnSuccessListener {
-                if (it.exists()) {
-                    val photoUrl = it.child("photoUrl").value.toString()
-                    Glide.with(context)
-                        .load(photoUrl)
-                        .diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .centerCrop()
-                        .circleCrop()
-                        .into(binding.imgPhoto)
-                }
+                val user = it.getValue(User::class.java)
+                val userName = user?.userName?.ifBlank {
+                    Constants.currentUser.displayName.orEmpty()
+                }.orEmpty()
+                binding.tvName.text = userName
+                binding.etName.setText(userName)
+                showNameEditor(userName.isBlank())
+                showUserImageProfile(user?.photoUrl.orEmpty())
             }.addOnFailureListener {
                 hostActivityListener?.showPopUpMessage(R.string.home_database_access_error)
             }
+    }
+
+    private fun showNameEditor(show: Boolean) {
+        with(binding) {
+            tilName.isVisible = show
+            btnCancelName.isVisible = show
+            btnSaveName.isVisible = show
+            btnEditName.isVisible = !show
+            if (show) {
+                etName.requestFocus()
+            } else {
+                tilName.error = null
+            }
+        }
+    }
+
+    private fun cancelNameEditing() {
+        val currentName = binding.tvName.text?.toString().orEmpty()
+        binding.etName.setText(currentName)
+        showNameEditor(currentName.isBlank())
+        hideKeyboard()
+    }
+
+    private fun showUserImageProfile(photoUrl: String) {
+        if (photoUrl.isBlank()) return
+
+        Glide.with(context)
+            .load(photoUrl)
+            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .centerCrop()
+            .circleCrop()
+            .into(binding.imgPhoto)
+    }
+
+    private fun hideKeyboard() {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(requireView().windowToken, 0)
     }
 
     /**
@@ -231,7 +358,12 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
      * */
     override fun onRefresh() {
         with(binding) {
-            tvName.text = Constants.currentUser.displayName
+            val displayName = binding.etName.text?.toString()?.ifBlank {
+                Constants.currentUser.displayName.orEmpty()
+            } ?: Constants.currentUser.displayName.orEmpty()
+            tvName.text = displayName
+            etName.setText(displayName)
+            showNameEditor(displayName.isBlank())
             tvEmail.text = Constants.currentUser.email
         }
     }
