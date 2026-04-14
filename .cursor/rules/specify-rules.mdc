@@ -1,0 +1,36 @@
+---
+description: Project Development Guidelines
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# DailyDose Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2026-04-13
+
+## Active Technologies
+
+- Kotlin 1.9.x (JVM 17) + Android Gradle Plugin 8.9.x, AndroidX (AppCompat, Fragment, Navigation, Lifecycle, Paging 3, Room), Jetpack Compose (Material3) alongside ViewBinding, Dagger Hilt 2.48, Firebase (Auth, Realtime Database, Storage, Config), Glide (001-clean-layered-architecture)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+# Add commands for Kotlin 1.9.x (JVM 17)
+
+## Code Style
+
+Kotlin 1.9.x (JVM 17): Follow standard conventions
+
+## Recent Changes
+- 001-clean-layered-architecture: Added Kotlin 1.9.x (JVM 17) + Android Gradle Plugin 8.9.x, AndroidX (AppCompat, Fragment, Navigation, Lifecycle, Paging 3, Room), Jetpack Compose (Material3) alongside ViewBinding, Dagger Hilt 2.48, Firebase (Auth, Realtime Database, Storage, Config), Glide
+
+- 001-clean-layered-architecture: Added Kotlin 1.9.x (JVM 17) + Android Gradle Plugin 8.9.x, AndroidX (AppCompat, Fragment, Navigation, Lifecycle, Paging 3, Room), Jetpack Compose (Material3) alongside ViewBinding, Dagger Hilt 2.48, Firebase (Auth, Realtime Database, Storage, Config), Glide
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

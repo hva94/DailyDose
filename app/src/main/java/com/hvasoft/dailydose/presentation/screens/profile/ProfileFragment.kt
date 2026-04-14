@@ -17,21 +17,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.firebase.ui.auth.AuthUI
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.UserProfileChangeRequest
-import com.google.firebase.database.DatabaseReference
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.common.Constants
-import com.hvasoft.dailydose.data.network.model.User
 import com.hvasoft.dailydose.databinding.FragmentProfileBinding
 import com.hvasoft.dailydose.presentation.screens.common.HomeFragmentListener
 import com.hvasoft.dailydose.presentation.screens.common.HostActivityListener
@@ -43,23 +40,20 @@ import java.io.File
 class ProfileFragment : Fragment(), HomeFragmentListener {
 
     private lateinit var binding: FragmentProfileBinding
-    private lateinit var snapshotsStorageRef: StorageReference
-    private lateinit var usersDatabaseRef: DatabaseReference
+    private val viewModel: ProfileViewModel by viewModels()
 
     private var hostActivityListener: HostActivityListener? = null
     private var imageSelectedUri: Uri? = null
 
-    private lateinit var context: Context
+    private lateinit var fragmentContext: Context
     private lateinit var photoFile: File
 
     private val selectImageResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == Activity.RESULT_OK) {
                 if (it.data?.data != null) imageSelectedUri = it.data?.data
-                with(binding) {
-                    imgPhoto.setImageURI(imageSelectedUri)
-                    postUserImageProfile()
-                }
+                binding.imgPhoto.setImageURI(imageSelectedUri)
+                postUserImageProfile()
             }
         }
 
@@ -67,30 +61,84 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null) {
                 imageSelectedUri = uri
-                with(binding) {
-                    imgPhoto.setImageURI(imageSelectedUri)
-                    postUserImageProfile()
-                }
+                binding.imgPhoto.setImageURI(imageSelectedUri)
+                postUserImageProfile()
             }
         }
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View {
-        context = requireContext()
+        fragmentContext = requireContext()
         binding = FragmentProfileBinding.inflate(inflater, container, false)
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         onRefresh()
         setupButtons()
-        setupFirebase()
-        loadUserProfile()
+        observeViewModel()
+        viewModel.loadProfile(
+            userId = Constants.currentUser.uid,
+            authDisplayNameFallback = Constants.currentUser.displayName.orEmpty(),
+        )
+    }
+
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        hostActivityListener = activity as HostActivityListener
+    }
+
+    private fun observeViewModel() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    viewModel.events.collect { event ->
+                        when (event) {
+                            is ProfileViewModel.Event.ProfileLoaded -> {
+                                binding.tvName.text = event.displayName
+                                binding.etName.setText(event.displayName)
+                                showNameEditor(event.displayName.isBlank())
+                                showUserImageProfile(event.photoUrl)
+                            }
+
+                            is ProfileViewModel.Event.NameUpdated -> {
+                                binding.progressBar.visibility = View.INVISIBLE
+                                val newName = binding.etName.text.toString().trim()
+                                binding.tvName.text = newName
+                                showNameEditor(false)
+                                hideKeyboard()
+                                FirebaseAuth.getInstance().currentUser?.let {
+                                    Constants.currentUser = it
+                                }
+                                hostActivityListener?.showPopUpMessage(R.string.profile_name_updated)
+                            }
+
+                            is ProfileViewModel.Event.PhotoUpdated -> {
+                                binding.progressBar.visibility = View.INVISIBLE
+                                showUserImageProfile(event.photoUrl)
+                                hostActivityListener?.showPopUpMessage(R.string.profile_user_image_updated)
+                            }
+
+                            is ProfileViewModel.Event.Failure -> {
+                                binding.progressBar.visibility = View.INVISIBLE
+                                hostActivityListener?.showPopUpMessage(event.messageRes)
+                            }
+                        }
+                    }
+                }
+                launch {
+                    viewModel.uploadProgress.collect { progress ->
+                        if (progress == null) return@collect
+                        binding.progressBar.visibility = View.VISIBLE
+                        binding.progressBar.progress = progress
+                    }
+                }
+            }
+        }
     }
 
     private fun setupButtons() {
@@ -100,72 +148,48 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
             btnCancelName.setOnClickListener { cancelNameEditing() }
             btnSaveName.setOnClickListener { updateUserName() }
             btnLogout.setOnClickListener {
-                context.let {
-                    MaterialAlertDialogBuilder(it)
-                        .setTitle(R.string.dialog_logout_title)
-                        .setPositiveButton(R.string.dialog_logout_confirm) { _, _ ->
-                            signOut()
-                        }
-
-                        .setNegativeButton(R.string.dialog_logout_cancel, null)
-                        .show()
-                }
+                MaterialAlertDialogBuilder(fragmentContext)
+                    .setTitle(R.string.dialog_logout_title)
+                    .setPositiveButton(R.string.dialog_logout_confirm) { _, _ -> signOut() }
+                    .setNegativeButton(R.string.dialog_logout_cancel, null)
+                    .show()
             }
         }
     }
 
-    override fun onAttach(context: Context) {
-        super.onAttach(context)
-        hostActivityListener = activity as HostActivityListener
-    }
-
     private fun signOut() {
-        context.let {
-            AuthUI.getInstance().signOut(it)
-                .addOnCompleteListener {
-                    Toast.makeText(context, R.string.profile_logout_success, Toast.LENGTH_SHORT)
-                        .show()
-                    binding.tvName.text = ""
-                    binding.etName.setText("")
-                    showNameEditor(true)
-                    binding.tvEmail.text = ""
-                    binding.imgPhoto.setImageResource(0)
-                    (activity?.findViewById(R.id.bottomNav) as?
-                            BottomNavigationView)?.selectedItemId = R.id.action_home
-                }
+        AuthUI.getInstance().signOut(fragmentContext).addOnCompleteListener {
+            Toast.makeText(fragmentContext, R.string.profile_logout_success, Toast.LENGTH_SHORT).show()
+            binding.tvName.text = ""
+            binding.etName.setText("")
+            showNameEditor(true)
+            binding.tvEmail.text = ""
+            binding.imgPhoto.setImageResource(0)
+            (activity?.findViewById(R.id.bottomNav) as? BottomNavigationView)?.selectedItemId =
+                R.id.action_home
         }
     }
 
     private fun selectImage(context: Context) {
-        val items = resources.getStringArray(R.array.array_options_item)
-
         MaterialAlertDialogBuilder(context)
             .setTitle(R.string.dialog_options_title)
-            .setItems(items) { _, item ->
+            .setItems(resources.getStringArray(R.array.array_options_item)) { _, item ->
                 when (item) {
                     0 -> openCamera()
-
                     1 -> openGallery()
                 }
             }
             .show()
     }
 
-    private fun setupFirebase() {
-        snapshotsStorageRef =
-            FirebaseStorage.getInstance().reference.child(Constants.SNAPSHOTS_PATH)
-        usersDatabaseRef =
-            FirebaseDatabase.getInstance().reference.child(Constants.USERS_PATH)
-    }
-
     private fun openCamera() {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
             photoFile = getPhotoFile()
             val fileProvider = FileProvider.getUriForFile(
                 requireActivity().baseContext,
                 "com.hvasoft.fileprovider",
-                photoFile
+                photoFile,
             )
             takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, fileProvider)
             imageSelectedUri = fileProvider
@@ -174,7 +198,7 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
     }
 
     private fun getPhotoFile(): File {
-        val storageDirectory = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        val storageDirectory = fragmentContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
         return File.createTempFile("photo", ".jpg", storageDirectory)
     }
 
@@ -183,37 +207,14 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
     }
 
     private fun postUserImageProfile() {
-        if (imageSelectedUri != null) {
-            binding.progressBar.visibility = View.VISIBLE
-
-            val fileName = "userImageProfile"
-            val myStorageRef = snapshotsStorageRef.child(Constants.currentUser.uid)
-                .child(fileName)
-
-            myStorageRef.putFile(imageSelectedUri!!)
-                .addOnProgressListener {
-                    val progress = (100 * it.bytesTransferred / it.totalByteCount).toInt()
-                    with(binding) {
-                        progressBar.progress = progress
-                    }
-                }
-                .addOnCompleteListener {
-                    binding.progressBar.visibility = View.INVISIBLE
-                }
-                .addOnSuccessListener {
-                    it.storage.downloadUrl.addOnSuccessListener { downloadUri ->
-                        saveUserProfileData(
-                            userName = binding.etName.text.toString().trim(),
-                            photoUrl = downloadUri.toString(),
-                            successMessageRes = R.string.profile_user_image_updated,
-                            failureMessageRes = R.string.profile_user_image_failed
-                        )
-                    }
-                }
-                .addOnFailureListener {
-                    hostActivityListener?.showPopUpMessage(R.string.post_message_post_image_fail)
-                }
-        }
+        if (imageSelectedUri == null) return
+        val currentName = binding.etName.text.toString().trim()
+            .ifEmpty { binding.tvName.text.toString() }
+        viewModel.uploadProfilePhoto(
+            userId = Constants.currentUser.uid,
+            imageUri = imageSelectedUri!!,
+            currentUserName = currentName,
+        )
     }
 
     private fun updateUserName() {
@@ -222,98 +223,13 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
             binding.tilName.error = getString(R.string.profile_name_empty_error)
             return
         }
-
         binding.tilName.error = null
         binding.progressBar.visibility = View.VISIBLE
-
-        val profileUpdates = UserProfileChangeRequest.Builder()
-            .setDisplayName(newName)
-            .build()
-
-        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
-        currentUser.updateProfile(profileUpdates)
-            .continueWithTask { task ->
-                if (!task.isSuccessful) {
-                    throw task.exception ?: IllegalStateException("Failed to update user profile")
-                }
-                saveUserProfileDataTask(
-                    userName = newName,
-                    photoUrl = null
-                )
-            }
-            .addOnSuccessListener {
-                Constants.currentUser = currentUser
-                binding.progressBar.visibility = View.INVISIBLE
-                binding.tvName.text = newName
-                showNameEditor(false)
-                hideKeyboard()
-                hostActivityListener?.showPopUpMessage(R.string.profile_name_updated)
-            }
-            .addOnFailureListener {
-                binding.progressBar.visibility = View.INVISIBLE
-                hostActivityListener?.showPopUpMessage(R.string.profile_database_write_error)
-            }
-    }
-
-    private fun saveUserProfileData(
-        userName: String? = null,
-        photoUrl: String? = null,
-        successMessageRes: Int,
-        failureMessageRes: Int
-    ) {
-        saveUserProfileDataTask(userName, photoUrl)
-            .addOnSuccessListener {
-                binding.progressBar.visibility = View.INVISIBLE
-                if (!userName.isNullOrEmpty()) {
-                    binding.tvName.text = userName
-                }
-                if (photoUrl != null) {
-                    showUserImageProfile(photoUrl)
-                }
-                hostActivityListener?.showPopUpMessage(successMessageRes)
-            }
-            .addOnFailureListener {
-                binding.progressBar.visibility = View.INVISIBLE
-                hostActivityListener?.showPopUpMessage(failureMessageRes)
-            }
-    }
-
-    private fun saveUserProfileDataTask(
-        userName: String? = null,
-        photoUrl: String? = null
-    ) = usersDatabaseRef.child(Constants.currentUser.uid)
-        .get()
-        .continueWithTask { task ->
-            if (!task.isSuccessful) {
-                throw task.exception ?: IllegalStateException("Failed to load user data")
-            }
-
-            val currentUserData = task.result?.getValue(User::class.java) ?: User()
-            val updatedUser = currentUserData.copy(
-                userName = userName ?: currentUserData.userName.ifEmpty {
-                    Constants.currentUser.displayName.orEmpty()
-                },
-                photoUrl = photoUrl ?: currentUserData.photoUrl
-            )
-
-            usersDatabaseRef.child(Constants.currentUser.uid).setValue(updatedUser)
-        }
-
-    private fun loadUserProfile() {
-        usersDatabaseRef
-            .child(Constants.currentUser.uid)
-            .get().addOnSuccessListener {
-                val user = it.getValue(User::class.java)
-                val userName = user?.userName?.ifBlank {
-                    Constants.currentUser.displayName.orEmpty()
-                }.orEmpty()
-                binding.tvName.text = userName
-                binding.etName.setText(userName)
-                showNameEditor(userName.isBlank())
-                showUserImageProfile(user?.photoUrl.orEmpty())
-            }.addOnFailureListener {
-                hostActivityListener?.showPopUpMessage(R.string.home_database_access_error)
-            }
+        viewModel.updateDisplayName(
+            userId = Constants.currentUser.uid,
+            newName = newName,
+            authDisplayNameFallback = Constants.currentUser.displayName.orEmpty(),
+        )
     }
 
     private fun showNameEditor(show: Boolean) {
@@ -322,11 +238,7 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
             btnCancelName.isVisible = show
             btnSaveName.isVisible = show
             btnEditName.isVisible = !show
-            if (show) {
-                etName.requestFocus()
-            } else {
-                tilName.error = null
-            }
+            if (show) etName.requestFocus() else tilName.error = null
         }
     }
 
@@ -339,8 +251,7 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
 
     private fun showUserImageProfile(photoUrl: String) {
         if (photoUrl.isBlank()) return
-
-        Glide.with(context)
+        Glide.with(fragmentContext)
             .load(photoUrl)
             .diskCacheStrategy(DiskCacheStrategy.ALL)
             .centerCrop()
@@ -349,18 +260,13 @@ class ProfileFragment : Fragment(), HomeFragmentListener {
     }
 
     private fun hideKeyboard() {
-        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val imm = fragmentContext.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(requireView().windowToken, 0)
     }
 
-    /**
-     *   FragmentAux
-     * */
     override fun onRefresh() {
+        val displayName = Constants.currentUser.displayName.orEmpty()
         with(binding) {
-            val displayName = binding.etName.text?.toString()?.ifBlank {
-                Constants.currentUser.displayName.orEmpty()
-            } ?: Constants.currentUser.displayName.orEmpty()
             tvName.text = displayName
             etName.setText(displayName)
             showNameEditor(displayName.isBlank())

@@ -12,21 +12,19 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.core.content.FileProvider
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputLayout
-import com.google.firebase.database.DatabaseReference
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.common.Constants
-import com.hvasoft.dailydose.data.network.model.SnapshotDTO
 import com.hvasoft.dailydose.databinding.FragmentAddBinding
 import com.hvasoft.dailydose.presentation.screens.common.HostActivityListener
 import dagger.hilt.android.AndroidEntryPoint
@@ -42,10 +40,9 @@ class AddFragment : Fragment(), HostActivityListener {
     private var _binding: FragmentAddBinding? = null
     private val binding get() = _binding!!
 
-    private lateinit var snapshotsDatabaseRef: DatabaseReference
-    private lateinit var snapshotsStorageRef: StorageReference
-    private lateinit var imageFile: File
+    private val viewModel: AddViewModel by viewModels()
 
+    private lateinit var imageFile: File
     private var hostActivityListener: HostActivityListener? = null
     private var imageSelectedUri: Uri? = null
 
@@ -53,42 +50,33 @@ class AddFragment : Fragment(), HostActivityListener {
         registerForActivityResult(StartActivityForResult()) { activityResult ->
             if (activityResult.resultCode == Activity.RESULT_OK) {
                 if (activityResult.data?.data != null) imageSelectedUri = activityResult.data?.data
-                with(binding) {
-                    imgPhoto.setImageURI(imageSelectedUri)
-                    tilTitle.visibility = View.VISIBLE
-                    val etTitleString =
-                        getString(R.string.add_default_title, getCurrentTimeString())
-                    etTitle.setText(etTitleString)
-                    tvMessage.text = getString(R.string.post_message_valid_title)
-                    btnSelect.visibility = View.GONE
-                }
+                onImageSelected()
             }
         }
 
     private val pickImageResult = registerForActivityResult(PickVisualMedia()) { uri ->
         if (uri != null) {
             imageSelectedUri = uri
-            with(binding) {
-                imgPhoto.setImageURI(imageSelectedUri)
-                tilTitle.visibility = View.VISIBLE
-                val etTitleString =
-                    getString(R.string.add_default_title, getCurrentTimeString())
-                etTitle.setText(etTitleString)
-                tvMessage.text = getString(R.string.post_message_valid_title)
-                btnSelect.visibility = View.GONE
-            }
+            onImageSelected()
         }
     }
 
-    private fun getCurrentTimeString(): String {
-        val timeInMillis = System.currentTimeMillis()
-        val dateFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-        return dateFormat.format(Date(timeInMillis))
+    private fun onImageSelected() {
+        with(binding) {
+            imgPhoto.setImageURI(imageSelectedUri)
+            tilTitle.visibility = View.VISIBLE
+            etTitle.setText(getString(R.string.add_default_title, getCurrentTimeString()))
+            tvMessage.text = getString(R.string.post_message_valid_title)
+            btnSelect.visibility = View.GONE
+        }
     }
+
+    private fun getCurrentTimeString(): String =
+        SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(System.currentTimeMillis()))
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View {
         _binding = FragmentAddBinding.inflate(inflater, container, false)
         return binding.root
@@ -96,30 +84,27 @@ class AddFragment : Fragment(), HostActivityListener {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         setupTextField()
         setupButtons()
-        setupFirebase()
+        observeUiState()
     }
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
         try {
             hostActivityListener = context as HostActivityListener
-        } catch (e: ClassCastException) {
-            throw ClassCastException("$context must implement OnSnapshotPostedListener")
+        } catch (_: ClassCastException) {
+            throw ClassCastException("$context must implement HostActivityListener")
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    override fun onDestroyView() {
+        super.onDestroyView()
         _binding = null
     }
 
     private fun setupTextField() {
-        with(binding) {
-            etTitle.addTextChangedListener { validateFields(tilTitle) }
-        }
+        binding.etTitle.addTextChangedListener { validateFields(binding.tilTitle) }
     }
 
     private fun setupButtons() {
@@ -129,21 +114,65 @@ class AddFragment : Fragment(), HostActivityListener {
         }
     }
 
-    private fun setupFirebase() {
-        snapshotsStorageRef =
-            FirebaseStorage.getInstance().reference.child(Constants.SNAPSHOTS_PATH)
-        snapshotsDatabaseRef =
-            FirebaseDatabase.getInstance().reference.child(Constants.SNAPSHOTS_PATH)
+    private fun observeUiState() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    when (state) {
+                        AddPostUiState.Idle -> Unit
+
+                        is AddPostUiState.Uploading -> {
+                            binding.progressBar.visibility = View.VISIBLE
+                            binding.progressBar.progress = state.percent
+                            binding.tvMessage.text = String.format("%s%%", state.percent)
+                        }
+
+                        AddPostUiState.Success -> {
+                            binding.progressBar.visibility = View.INVISIBLE
+                            hideKeyboard()
+                            hostActivityListener?.showPopUpMessage(R.string.post_message_post_success)
+                            resetForm()
+                            hostActivityListener?.onSnapshotPosted()
+                            enableUI(true)
+                            viewModel.acknowledgeTerminalState()
+                        }
+
+                        AddPostUiState.FailedImage -> {
+                            binding.progressBar.visibility = View.INVISIBLE
+                            hostActivityListener?.showPopUpMessage(R.string.post_message_post_image_fail)
+                            enableUI(true)
+                            viewModel.acknowledgeTerminalState()
+                        }
+
+                        AddPostUiState.FailedSave -> {
+                            binding.progressBar.visibility = View.INVISIBLE
+                            hostActivityListener?.showPopUpMessage(R.string.post_message_post_fail)
+                            enableUI(true)
+                            viewModel.acknowledgeTerminalState()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun resetForm() {
+        with(binding) {
+            tilTitle.visibility = View.GONE
+            etTitle.setText("")
+            tilTitle.error = null
+            tvMessage.text = getString(R.string.post_message_title)
+            imgPhoto.setImageDrawable(null)
+        }
+        imageSelectedUri = null
     }
 
     private fun selectImage(context: Context) {
-        val items = resources.getStringArray(R.array.array_options_item)
         MaterialAlertDialogBuilder(context)
             .setTitle(R.string.dialog_options_title)
-            .setItems(items) { _, item ->
+            .setItems(resources.getStringArray(R.array.array_options_item)) { _, item ->
                 when (item) {
                     0 -> openCamera()
-
                     1 -> openGallery()
                 }
             }
@@ -151,13 +180,13 @@ class AddFragment : Fragment(), HostActivityListener {
     }
 
     private fun openCamera() {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
             imageFile = getPhotoFile()
             val fileProvider = FileProvider.getUriForFile(
                 requireActivity().baseContext,
                 "com.hvasoft.fileprovider",
-                imageFile
+                imageFile,
             )
             takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, fileProvider)
             imageSelectedUri = fileProvider
@@ -175,83 +204,26 @@ class AddFragment : Fragment(), HostActivityListener {
     }
 
     private fun postSnapshot() {
-        if (imageSelectedUri != null) {
-            enableUI(false)
-            binding.progressBar.visibility = View.VISIBLE
-
-            val key = snapshotsDatabaseRef.push().key!!
-            val myStorageRef = snapshotsStorageRef.child(Constants.currentUser.uid)
-                .child(key)
-
-            myStorageRef.putFile(imageSelectedUri!!)
-                .addOnProgressListener {
-                    val progress = (100 * it.bytesTransferred / it.totalByteCount).toInt()
-                    with(binding) {
-                        progressBar.progress = progress
-                        tvMessage.text = String.format("%s%%", progress)
-                    }
-                }
-                .addOnCompleteListener {
-                    binding.progressBar.visibility = View.INVISIBLE
-                }
-                .addOnSuccessListener {
-                    it.storage.downloadUrl.addOnSuccessListener { downloadUri ->
-                        saveSnapshot(
-                            key,
-                            downloadUri.toString(),
-                            binding.etTitle.text.toString().trim(),
-                            System.currentTimeMillis(),
-                            Constants.currentUser.uid
-                        )
-                    }
-                }
-                .addOnFailureListener {
-                    hostActivityListener?.showPopUpMessage(R.string.post_message_post_image_fail)
-                }
-        }
-    }
-
-    private fun saveSnapshot(
-        key: String,
-        url: String,
-        title: String,
-        dateTime: Long,
-        userId: String
-    ) {
-        val snapshot = SnapshotDTO(
-            idUserOwner = userId,
-            title = title,
-            dateTime = dateTime,
-            photoUrl = url
+        val uri = imageSelectedUri ?: return
+        if (!validateFields(binding.tilTitle)) return
+        enableUI(false)
+        viewModel.postSnapshot(
+            title = binding.etTitle.text.toString().trim(),
+            imageUri = uri,
+            userId = Constants.currentUser.uid,
         )
-        snapshotsDatabaseRef.child(key).setValue(snapshot)
-            .addOnSuccessListener {
-                hideKeyboard()
-                hostActivityListener?.showPopUpMessage(R.string.post_message_post_success)
-                with(binding) {
-                    tilTitle.visibility = View.GONE
-                    etTitle.setText("")
-                    tilTitle.error = null
-                    tvMessage.text = getString(R.string.post_message_title)
-                    imgPhoto.setImageDrawable(null)
-                }
-                hostActivityListener?.onSnapshotPosted()
-            }
-            .addOnCompleteListener { enableUI(true) }
-            .addOnFailureListener { hostActivityListener?.showPopUpMessage(R.string.post_message_post_fail) }
-
     }
 
     private fun validateFields(vararg textFields: TextInputLayout): Boolean {
         var isValid = true
-
         for (textField in textFields) {
             if (textField.editText?.text.toString().trim().isEmpty()) {
                 textField.error = getString(R.string.helper_required)
                 isValid = false
-            } else textField.error = null
+            } else {
+                textField.error = null
+            }
         }
-
         return isValid
     }
 
