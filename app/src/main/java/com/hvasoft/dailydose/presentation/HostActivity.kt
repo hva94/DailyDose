@@ -10,17 +10,38 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.viewModels
+import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
-import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentManager
 import com.firebase.ui.auth.AuthUI
 import com.firebase.ui.auth.IdpResponse
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.ktx.Firebase
@@ -30,27 +51,35 @@ import com.hvasoft.dailydose.BuildConfig
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.network.model.User
-import com.hvasoft.dailydose.databinding.ActivityHostBinding
-import com.hvasoft.dailydose.presentation.screens.add.AddFragment
-import com.hvasoft.dailydose.presentation.screens.common.HomeFragmentListener
-import com.hvasoft.dailydose.presentation.screens.common.HostActivityListener
-import com.hvasoft.dailydose.presentation.screens.home.HomeFragment
-import com.hvasoft.dailydose.presentation.screens.profile.ProfileFragment
+import com.hvasoft.dailydose.presentation.screens.add.AddRoute
+import com.hvasoft.dailydose.presentation.screens.add.AddViewModel
+import com.hvasoft.dailydose.presentation.screens.home.HomeRoute
+import com.hvasoft.dailydose.presentation.screens.home.HomeViewModel
+import com.hvasoft.dailydose.presentation.screens.profile.ProfileRoute
+import com.hvasoft.dailydose.presentation.screens.profile.ProfileViewModel
+import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
 import dagger.hilt.android.AndroidEntryPoint
+
 @AndroidEntryPoint
-class HostActivity : AppCompatActivity(), HostActivityListener {
+class HostActivity : ComponentActivity() {
 
-    private var _binding: ActivityHostBinding? = null
-    private val binding get() = _binding!!
+    private val homeViewModel: HomeViewModel by viewModels()
+    private val addViewModel: AddViewModel by viewModels()
+    private val profileViewModel: ProfileViewModel by viewModels()
 
-    private lateinit var activeFragment: Fragment
     private lateinit var authListener: FirebaseAuth.AuthStateListener
     private lateinit var updaterPrefs: SharedPreferences
 
     private var firebaseAuth: FirebaseAuth? = null
-    private var mFragmentManager: FragmentManager? = null
     private val remoteConfig = Firebase.remoteConfig
     private var hasShownUpdateDialog = false
+    private var isAuthFlowInProgress = false
+
+    private var selectedDestination by mutableStateOf(MainDestination.HOME)
+    private var homeRefreshSignal by mutableIntStateOf(0)
+    private var profileRefreshSignal by mutableIntStateOf(0)
+    private var pendingUpdateApkUrl by mutableStateOf<String?>(null)
+    private var snackbarRequest by mutableStateOf<SnackbarRequest?>(null)
 
     private val installPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -73,6 +102,7 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
 
     private val authResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            isAuthFlowInProgress = false
             if (it.resultCode == RESULT_OK) {
                 Toast.makeText(this, R.string.main_auth_welcome, Toast.LENGTH_SHORT).show()
             } else if (IdpResponse.fromResultIntent(it.data) == null) {
@@ -82,18 +112,71 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        _binding = ActivityHostBinding.inflate(layoutInflater)
-        setContentView(binding.root)
         updaterPrefs = getSharedPreferences(UPDATER_PREFS_NAME, Context.MODE_PRIVATE)
+        setContent {
+            DailyDoseTheme {
+                val snackbarHostState = remember { SnackbarHostState() }
+
+                LaunchedEffect(snackbarRequest) {
+                    snackbarRequest?.let { request ->
+                        snackbarHostState.showSnackbar(
+                            message = getString(request.messageRes),
+                            duration = request.duration,
+                        )
+                        snackbarRequest = null
+                    }
+                }
+
+                HostContent(
+                    selectedDestination = selectedDestination,
+                    snackbarHostState = snackbarHostState,
+                    onDestinationSelected = ::onDestinationSelected,
+                    homeContent = {
+                        HomeRoute(
+                            viewModel = homeViewModel,
+                            refreshSignal = homeRefreshSignal,
+                            modifier = Modifier.fillMaxSize(),
+                            onShowMessage = ::showPopUpMessage,
+                        )
+                    },
+                    addContent = {
+                        AddRoute(
+                            viewModel = addViewModel,
+                            refreshSignal = homeRefreshSignal,
+                            modifier = Modifier.fillMaxSize(),
+                            onShowMessage = ::showPopUpMessage,
+                            onSnapshotPosted = ::onSnapshotPosted,
+                        )
+                    },
+                    profileContent = {
+                        ProfileRoute(
+                            viewModel = profileViewModel,
+                            refreshSignal = profileRefreshSignal,
+                            modifier = Modifier.fillMaxSize(),
+                            onShowMessage = ::showPopUpMessage,
+                            onSignedOut = {
+                                selectedDestination = MainDestination.HOME
+                                homeRefreshSignal += 1
+                            },
+                        )
+                    },
+                )
+
+                pendingUpdateApkUrl?.let { apkUrl ->
+                    UpdateDialog(
+                        onConfirm = {
+                            pendingUpdateApkUrl = null
+                            downloadUpdateApk(apkUrl)
+                        },
+                        onDismiss = { pendingUpdateApkUrl = null },
+                    )
+                }
+            }
+        }
         setupRemoteConfig()
         registerUpdateDownloadReceiver()
         setupAuth()
         checkForAppUpdate()
-    }
-
-    override fun onResumeFragments() {
-        super.onResumeFragments()
-        setupAuth()
     }
 
     override fun onResume() {
@@ -110,7 +193,6 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(updateDownloadReceiver)
-        _binding = null
     }
 
     private fun setupRemoteConfig() {
@@ -126,7 +208,7 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
             this,
             updateDownloadReceiver,
             IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
     }
 
@@ -141,20 +223,9 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
                     apkUrl.isNotBlank()
                 ) {
                     hasShownUpdateDialog = true
-                    showUpdateDialog(apkUrl)
+                    pendingUpdateApkUrl = apkUrl
                 }
             }
-    }
-
-    private fun showUpdateDialog(apkUrl: String) {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.update_dialog_title)
-            .setMessage(R.string.update_dialog_message)
-            .setPositiveButton(R.string.update_dialog_confirm) { _, _ ->
-                downloadUpdateApk(apkUrl)
-            }
-            .setNegativeButton(R.string.dialog_logout_cancel, null)
-            .show()
     }
 
     private fun downloadUpdateApk(apkUrl: String) {
@@ -163,7 +234,7 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
             .setVisibleInDownloadsUi(true)
             .setDestinationInExternalPublicDir(
                 Environment.DIRECTORY_DOWNLOADS,
-                LATEST_APK_FILE_NAME
+                LATEST_APK_FILE_NAME,
             )
             .setMimeType("application/vnd.android.package-archive")
             .setTitle(getString(R.string.app_name))
@@ -221,35 +292,29 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
         firebaseAuth = FirebaseAuth.getInstance()
         authListener = FirebaseAuth.AuthStateListener { auth ->
             if (auth.currentUser == null) {
-                authResult.launch(
-                    AuthUI.getInstance().createSignInIntentBuilder()
-                        .setIsSmartLockEnabled(false)
-                        .setLogo(R.mipmap.ic_banner)
-                        .setTheme(R.style.LoginTheme)
-                        .setLockOrientation(true)
-                        .setAvailableProviders(
-                            listOf(
-                                AuthUI.IdpConfig.EmailBuilder().build(),
-                                AuthUI.IdpConfig.GoogleBuilder().build()
+                selectedDestination = MainDestination.HOME
+                if (!isAuthFlowInProgress) {
+                    isAuthFlowInProgress = true
+                    authResult.launch(
+                        AuthUI.getInstance().createSignInIntentBuilder()
+                            .setIsSmartLockEnabled(false)
+                            .setLogo(R.mipmap.ic_banner)
+                            .setTheme(R.style.LoginTheme)
+                            .setLockOrientation(true)
+                            .setAvailableProviders(
+                                listOf(
+                                    AuthUI.IdpConfig.EmailBuilder().build(),
+                                    AuthUI.IdpConfig.GoogleBuilder().build(),
+                                )
                             )
-                        )
-                        .build()
-                )
-                mFragmentManager = null
+                            .build()
+                    )
+                }
             } else {
                 Constants.currentUser = auth.currentUser!!
                 ensureCurrentUserRecord()
-
-                val fragmentProfile =
-                    mFragmentManager?.findFragmentByTag(ProfileFragment::class.java.name)
-                fragmentProfile?.let {
-                    (it as HomeFragmentListener).onRefresh()
-                }
-
-                if (mFragmentManager == null) {
-                    mFragmentManager = supportFragmentManager
-                    setupBottomNav(mFragmentManager!!)
-                }
+                homeRefreshSignal += 1
+                profileRefreshSignal += 1
             }
         }
     }
@@ -265,87 +330,43 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
                 userReference.setValue(
                     User(
                         userName = currentUser.displayName.orEmpty(),
-                        photoUrl = currentUser.photoUrl?.toString().orEmpty()
+                        photoUrl = currentUser.photoUrl?.toString().orEmpty(),
                     )
                 )
             }
         }
     }
 
-    private fun setupBottomNav(fragmentManager: FragmentManager) {
-        mFragmentManager?.let {
-            for (fragment in it.fragments) {
-                it.beginTransaction().remove(fragment!!).commit()
+    private fun onDestinationSelected(destination: MainDestination) {
+        val wasSelected = selectedDestination == destination
+        selectedDestination = destination
+
+        when (destination) {
+            MainDestination.HOME -> {
+                if (wasSelected) {
+                    homeRefreshSignal += 1
+                }
             }
-        }
 
-        val homeFragment = HomeFragment()
-        val addFragment = AddFragment()
-        val profileFragment = ProfileFragment()
-
-        activeFragment = homeFragment
-
-        fragmentManager.beginTransaction()
-            .add(R.id.hostFragment, profileFragment, profileFragment::class.java.name)
-            .hide(profileFragment)
-            .commit()
-
-        fragmentManager.beginTransaction()
-            .add(R.id.hostFragment, addFragment, addFragment::class.java.name)
-            .hide(addFragment)
-            .commit()
-
-        fragmentManager.beginTransaction()
-            .add(R.id.hostFragment, homeFragment, HomeFragment::class.java.name)
-            .commit()
-
-        binding.bottomNav.setOnItemSelectedListener {
-            when (it.itemId) {
-                R.id.action_home -> {
-                    fragmentManager.beginTransaction().hide(activeFragment).show(homeFragment)
-                        .commit()
-                    activeFragment = homeFragment
-                    true
+            MainDestination.ADD -> Unit
+            MainDestination.PROFILE -> {
+                if (!wasSelected) {
+                    profileRefreshSignal += 1
                 }
-                R.id.action_add -> {
-                    fragmentManager.beginTransaction().hide(activeFragment).show(addFragment)
-                        .commit()
-                    activeFragment = addFragment
-                    true
-                }
-                R.id.action_profile -> {
-                    fragmentManager.beginTransaction().hide(activeFragment).show(profileFragment)
-                        .commit()
-                    activeFragment = profileFragment
-                    true
-                }
-                else -> false
-            }
-        }
-
-        binding.bottomNav.setOnItemReselectedListener {
-            when (it.itemId) {
-                R.id.action_home -> (homeFragment as HomeFragmentListener).onRefresh()
             }
         }
     }
 
-    override fun showPopUpMessage(resId: Int, duration: Int) {
-        Snackbar.make(binding.root, resId, duration)
-            .setAnchorView(binding.bottomNav)
-            .show()
+    private fun showPopUpMessage(@StringRes resId: Int) {
+        snackbarRequest = SnackbarRequest(
+            messageRes = resId,
+            duration = SnackbarDuration.Short,
+        )
     }
 
-    override fun onSnapshotPosted() {
-        val fragmentManager = supportFragmentManager
-        val homeFragment =
-            fragmentManager.findFragmentByTag(HomeFragment::class.java.name) as HomeFragment?
-        if (homeFragment != null) {
-            fragmentManager.beginTransaction().hide(activeFragment).show(homeFragment).commit()
-            activeFragment = homeFragment
-            binding.bottomNav.selectedItemId = R.id.action_home
-            homeFragment.onRefresh()
-        }
+    private fun onSnapshotPosted() {
+        selectedDestination = MainDestination.HOME
+        homeRefreshSignal += 1
     }
 
     private fun getPendingDownloadId(): Long? {
@@ -423,3 +444,78 @@ class HostActivity : AppCompatActivity(), HostActivityListener {
         private const val PREF_READY_DOWNLOAD_ID = "ready_download_id"
     }
 }
+
+@Composable
+private fun HostContent(
+    selectedDestination: MainDestination,
+    snackbarHostState: SnackbarHostState,
+    onDestinationSelected: (MainDestination) -> Unit,
+    homeContent: @Composable () -> Unit,
+    addContent: @Composable () -> Unit,
+    profileContent: @Composable () -> Unit,
+) {
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        bottomBar = {
+            NavigationBar {
+                MainDestination.entries.forEach { destination ->
+                    NavigationBarItem(
+                        selected = selectedDestination == destination,
+                        onClick = { onDestinationSelected(destination) },
+                        icon = {
+                            Icon(
+                                painter = painterResource(destination.iconRes),
+                                contentDescription = stringResource(destination.labelRes),
+                            )
+                        },
+                        label = { Text(text = stringResource(destination.labelRes)) },
+                    )
+                }
+            }
+        },
+    ) { innerPadding ->
+        val contentModifier = Modifier.padding(innerPadding)
+        Box(modifier = contentModifier.fillMaxSize()) {
+            when (selectedDestination) {
+                MainDestination.HOME -> {
+                    homeContent()
+                }
+
+                MainDestination.ADD -> {
+                    addContent()
+                }
+
+                MainDestination.PROFILE -> {
+                    profileContent()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.update_dialog_title)) },
+        text = { Text(text = stringResource(R.string.update_dialog_message)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(R.string.update_dialog_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.dialog_logout_cancel))
+            }
+        },
+    )
+}
+
+private data class SnackbarRequest(
+    @StringRes val messageRes: Int,
+    val duration: SnackbarDuration,
+)
