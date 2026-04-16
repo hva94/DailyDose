@@ -52,11 +52,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.firebase.ui.auth.AuthUI
-import com.google.firebase.auth.FirebaseAuth
 import com.hvasoft.dailydose.BuildConfig
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.presentation.screens.common.ShimmerPlaceholder
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
 import java.io.File
 
@@ -73,11 +73,11 @@ fun ProfileRoute(
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val uploadProgress by viewModel.uploadProgress.collectAsStateWithLifecycle()
-    var displayName by rememberSaveable { mutableStateOf(Constants.currentUser.displayName.orEmpty()) }
-    var nameFieldValue by rememberSaveable { mutableStateOf(Constants.currentUser.displayName.orEmpty()) }
-    var email by rememberSaveable { mutableStateOf(Constants.currentUser.email.orEmpty()) }
+    var displayName by rememberSaveable { mutableStateOf("") }
+    var nameFieldValue by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
     var photoUrl by rememberSaveable { mutableStateOf("") }
-    var isEditingName by rememberSaveable { mutableStateOf(displayName.isBlank()) }
+    var isEditingName by rememberSaveable { mutableStateOf(true) }
     var showImageSourceDialog by rememberSaveable { mutableStateOf(false) }
     var showLogoutDialog by rememberSaveable { mutableStateOf(false) }
     var pendingCameraUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -86,8 +86,7 @@ fun ProfileRoute(
     val photoPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             if (uri != null) {
-                viewModel.uploadProfilePhoto(
-                    userId = Constants.currentUser.uid,
+                viewModel.uploadCurrentProfilePhoto(
                     imageUri = uri,
                     currentUserName = nameFieldValue.trim().ifEmpty { displayName },
                 )
@@ -97,8 +96,7 @@ fun ProfileRoute(
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             val uri = pendingCameraUri?.let(Uri::parse)
             if (success && uri != null) {
-                viewModel.uploadProfilePhoto(
-                    userId = Constants.currentUser.uid,
+                viewModel.uploadCurrentProfilePhoto(
                     imageUri = uri,
                     currentUserName = nameFieldValue.trim().ifEmpty { displayName },
                 )
@@ -115,15 +113,15 @@ fun ProfileRoute(
                     nameFieldValue = event.displayName
                     isEditingName = event.displayName.isBlank()
                     photoUrl = event.photoUrl
-                    email = Constants.currentUser.email.orEmpty()
+                    email = event.email
                 }
 
                 is ProfileViewModel.Event.NameUpdated -> {
-                    displayName = nameFieldValue.trim()
+                    displayName = event.displayName
+                    nameFieldValue = event.displayName
                     isEditingName = false
                     nameErrorRes = null
                     keyboardController?.hide()
-                    FirebaseAuth.getInstance().currentUser?.let { Constants.currentUser = it }
                     onShowMessage(R.string.profile_name_updated)
                 }
 
@@ -140,14 +138,7 @@ fun ProfileRoute(
     }
 
     LaunchedEffect(refreshSignal) {
-        viewModel.loadProfile(
-            userId = Constants.currentUser.uid,
-            authDisplayNameFallback = Constants.currentUser.displayName.orEmpty(),
-        )
-        displayName = Constants.currentUser.displayName.orEmpty()
-        nameFieldValue = displayName
-        email = Constants.currentUser.email.orEmpty()
-        isEditingName = displayName.isBlank()
+        viewModel.loadCurrentProfile()
     }
 
     if (showImageSourceDialog) {
@@ -232,11 +223,7 @@ fun ProfileRoute(
             if (newName.isEmpty()) {
                 nameErrorRes = R.string.profile_name_empty_error
             } else {
-                viewModel.updateDisplayName(
-                    userId = Constants.currentUser.uid,
-                    newName = newName,
-                    authDisplayNameFallback = Constants.currentUser.displayName.orEmpty(),
-                )
+                viewModel.updateCurrentDisplayName(newName)
             }
         },
         onLogout = { showLogoutDialog = true },
@@ -294,6 +281,25 @@ private fun ProfileScreen(
                     contentDescription = stringResource(R.string.add_button_select),
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
+                )
+                SubcomposeAsyncImage(
+                    model = photoUrl,
+                    contentDescription = stringResource(R.string.add_button_select),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        ShimmerPlaceholder(
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
+                    error = {
+                        Image(
+                            painter = painterResource(R.drawable.image_error),
+                            contentDescription = stringResource(R.string.home_description_profile_user_photo),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    },
                 )
             }
         }

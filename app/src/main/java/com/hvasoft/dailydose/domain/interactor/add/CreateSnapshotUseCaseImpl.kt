@@ -11,8 +11,7 @@ class CreateSnapshotUseCaseImpl @Inject constructor(
     override suspend fun invoke(
         title: String,
         localImageContentUri: String,
-        userId: String,
         onProgress: (Int) -> Unit,
     ): PostSnapshotOutcome =
-        addSnapshotRepository.publishSnapshot(userId, localImageContentUri, title, onProgress)
+        addSnapshotRepository.publishSnapshot(localImageContentUri, title, onProgress)
 }

@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Toast
@@ -21,8 +20,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -74,21 +75,13 @@ class HostActivity : ComponentActivity() {
     private val remoteConfig = Firebase.remoteConfig
     private var hasShownUpdateDialog = false
     private var isAuthFlowInProgress = false
+    private var lastAuthenticatedUserId: String? = null
 
     private var selectedDestination by mutableStateOf(MainDestination.HOME)
     private var homeRefreshSignal by mutableIntStateOf(0)
     private var profileRefreshSignal by mutableIntStateOf(0)
     private var pendingUpdateApkUrl by mutableStateOf<String?>(null)
     private var snackbarRequest by mutableStateOf<SnackbarRequest?>(null)
-
-    private val installPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            if (canInstallUnknownApps()) {
-                launchDownloadedApkInstaller()
-            } else {
-                showPopUpMessage(R.string.update_permission_denied)
-            }
-        }
 
     private val updateDownloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -248,50 +241,12 @@ class HostActivity : ComponentActivity() {
         showPopUpMessage(R.string.update_download_started)
     }
 
-    private fun launchDownloadedApkInstaller() {
-        val apkUri = getReadyDownloadedApkUri() ?: run {
-            showPopUpMessage(R.string.update_download_failed)
-            return
-        }
-
-        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-            data = apkUri
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-
-        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(apkUri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-
-        try {
-            if (installIntent.resolveActivity(packageManager) != null) {
-                startActivity(installIntent)
-            } else {
-                startActivity(fallbackIntent)
-            }
-        } catch (_: Exception) {
-            showPopUpMessage(R.string.update_install_failed)
-            return
-        }
-
-        clearReadyDownloadId()
-    }
-
-    private fun canInstallUnknownApps(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            packageManager.canRequestPackageInstalls()
-        } else {
-            true
-        }
-    }
-
     private fun setupAuth() {
         firebaseAuth = FirebaseAuth.getInstance()
         authListener = FirebaseAuth.AuthStateListener { auth ->
             if (auth.currentUser == null) {
+                lastAuthenticatedUserId?.let(homeViewModel::clearOfflineSnapshots)
+                lastAuthenticatedUserId = null
                 selectedDestination = MainDestination.HOME
                 if (!isAuthFlowInProgress) {
                     isAuthFlowInProgress = true
@@ -311,16 +266,21 @@ class HostActivity : ComponentActivity() {
                     )
                 }
             } else {
-                Constants.currentUser = auth.currentUser!!
-                ensureCurrentUserRecord()
+                val currentUser = auth.currentUser ?: return@AuthStateListener
+                val currentUserId = currentUser.uid
+                val previousUserId = lastAuthenticatedUserId
+                if (previousUserId != null && previousUserId != currentUserId) {
+                    homeViewModel.clearOfflineSnapshots(previousUserId)
+                }
+                lastAuthenticatedUserId = currentUserId
+                ensureCurrentUserRecord(currentUser)
                 homeRefreshSignal += 1
                 profileRefreshSignal += 1
             }
         }
     }
 
-    private fun ensureCurrentUserRecord() {
-        val currentUser = Constants.currentUser
+    private fun ensureCurrentUserRecord(currentUser: com.google.firebase.auth.FirebaseUser) {
         val userReference = FirebaseDatabase.getInstance()
             .getReference(Constants.USERS_PATH)
             .child(currentUser.uid)
@@ -469,6 +429,10 @@ private fun HostContent(
                             )
                         },
                         label = { Text(text = stringResource(destination.labelRes)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                        ),
                     )
                 }
             }

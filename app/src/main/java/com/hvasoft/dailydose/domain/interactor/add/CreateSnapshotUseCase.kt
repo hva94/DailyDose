@@ -7,7 +7,6 @@ interface CreateSnapshotUseCase {
     suspend operator fun invoke(
         title: String,
         localImageContentUri: String,
-        userId: String,
         onProgress: (Int) -> Unit,
     ): PostSnapshotOutcome
 }

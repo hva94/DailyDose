@@ -5,7 +5,7 @@ import androidx.paging.PagingState
 import com.hvasoft.dailydose.data.common.Constants.INDEX_ONE
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.domain.common.extension_functions.getLikeCountText
-import com.hvasoft.dailydose.domain.common.extension_functions.isLikedByCurrentUser
+import com.hvasoft.dailydose.domain.common.extension_functions.isLikedBy
 import com.hvasoft.dailydose.domain.model.Snapshot
 import kotlinx.coroutines.flow.firstOrNull
 
@@ -43,7 +43,7 @@ class SnapshotPagingSource(
             snapshot.apply {
                 this.userPhotoUrl = userPhotoUrl
                 this.userName = userName
-                this.isLikedByCurrentUser = isLikedByCurrentUser()
+                this.isLikedByCurrentUser = isLikedBy(userId = null)
                 this.likeCount = getLikeCountText()
             }
         }

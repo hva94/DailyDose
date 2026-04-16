@@ -2,6 +2,7 @@ package com.hvasoft.dailydose.domain.interactor.home
 
 import androidx.paging.ExperimentalPagingApi
 import androidx.paging.PagingData
+import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.repository.HomeRepository
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,14 @@ class GetSnapshotsUseCaseImpl @Inject constructor(
     @ExperimentalPagingApi
     override fun invoke(): Flow<PagingData<Snapshot>> = flow {
         emitAll(homeRepository.getPagedSnapshots())
+    }
+
+    override fun observeSyncState(): Flow<HomeFeedSyncState> = homeRepository.observeSyncState()
+
+    override suspend fun refresh(): Result<Unit> = homeRepository.refreshSnapshots()
+
+    override suspend fun clearOfflineSnapshots(accountId: String) {
+        homeRepository.clearOfflineSnapshots(accountId)
     }
 
 }

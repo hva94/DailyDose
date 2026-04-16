@@ -10,10 +10,9 @@ class AddSnapshotRepositoryImpl @Inject constructor(
 ) : AddSnapshotRepository {
 
     override suspend fun publishSnapshot(
-        userId: String,
         localImageContentUri: String,
         title: String,
         onProgress: (Int) -> Unit,
     ): PostSnapshotOutcome =
-        remoteDatabaseService.publishSnapshot(userId, localImageContentUri, title, onProgress)
+        remoteDatabaseService.publishSnapshot(localImageContentUri, title, onProgress)
 }

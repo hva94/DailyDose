@@ -1,7 +1,7 @@
 # DailyDose Android Application - [linkedin.com/in/hva94](https://www.linkedin.com/in/hva94/)
 
 ## Android Application for sharing daily photo moments. <br>
-Kotlin, Clean Architecture, ViewBinding, Dagger Hilt, Firebase Services...
+Kotlin, Clean Architecture, Jetpack Compose, Dagger Hilt, Firebase Services...
 
 ## Architecture
 
@@ -17,6 +17,19 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - Master branch is the latest stable version.
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
+
+## 1.2.0
+- Full presentation layer migration from Fragments/XML/ViewBinding to **Jetpack Compose**.
+- `HostActivity` now runs a Compose-first app shell with top-level Home/Add/Profile navigation, snackbar handling, and preserved FirebaseUI auth plus Remote Config update flows.
+- Home, Add, and Profile screens were rewritten in Compose, keeping the existing product behavior for posting, liking, deleting, sharing, editing profile data, upload progress, and sign-out.
+- Legacy presentation code was removed, including old fragments, XML screen layouts, bottom navigation resources, RecyclerView adapter code, and other View-era helpers.
+- Image loading moved to **Coil**, paging moved into the Compose UI flow, and the old Home image zoom behavior was intentionally removed during the migration.
+- Added **offline support for the Home feed** with a local-first architecture using **Room** plus app-private retained media files.
+- The app now keeps a bounded per-user cache of recent Home feed items and their image previews, so previously synced content can still be browsed offline.
+- Offline v1 is intentionally read-only for remote mutations: like/delete are blocked offline, while sharing remains available when a retained image exists locally.
+- Startup auth handling was hardened with a session-based approach to avoid crashes caused by eagerly reading the signed-in user before Firebase auth is ready.
+- Share behavior on Home was improved so supported targets receive an actual image attachment from a cache-backed `content://` URI instead of a raw file route/path.
+- Test coverage was expanded across the Compose presentation layer, offline feed behavior, startup-safe auth handling, and sharing/offline regression paths.
 
 ## 1.1.5
 - Add Snapshot flow moved behind clean architecture: `AddSnapshotRepository`, `CreateSnapshotUseCase`, and `PostSnapshotOutcome` for upload vs. save failures with progress reporting.

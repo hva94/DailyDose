@@ -1,10 +1,6 @@
 package com.hvasoft.dailydose.data.common
 
-import com.google.firebase.auth.FirebaseUser
-
 object Constants {
-
-    lateinit var currentUser: FirebaseUser
 
     const val SNAPSHOTS_PATH = "snapshots"
     const val USERS_PATH = "users"
@@ -13,5 +9,6 @@ object Constants {
     const val LIKE_LIST_PROPERTY = "likeList"
     const val SNAPSHOTS_ITEMS_PER_PAGE = 20
     const val INDEX_ONE = 1
+    const val OFFLINE_FEED_RETENTION_LIMIT = 50
 
 }

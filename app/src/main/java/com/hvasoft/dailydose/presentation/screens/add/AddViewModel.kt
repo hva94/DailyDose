@@ -19,13 +19,12 @@ class AddViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<AddPostUiState>(AddPostUiState.Idle)
     val uiState = _uiState.asStateFlow()
 
-    fun postSnapshot(title: String, imageUri: Uri, userId: String) {
+    fun postSnapshot(title: String, imageUri: Uri) {
         viewModelScope.launch {
             _uiState.value = AddPostUiState.Uploading(0)
             val outcome = createSnapshotUseCase(
                 title = title,
                 localImageContentUri = imageUri.toString(),
-                userId = userId,
                 onProgress = { percent -> _uiState.value = AddPostUiState.Uploading(percent) },
             )
             _uiState.value = when (outcome) {

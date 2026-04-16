@@ -8,15 +8,25 @@
 .gradle
 /local.properties
 local.properties
+**/build/
+out/
+*.class
+*.jar
+*.log
+.env*
 
 # IDE
 *.iml
 .idea/*
 !.idea/codeStyles/
 !.idea/codeStyles/**
+.vscode/
+*.swp
 
 # OS
 .DS_Store
+Thumbs.db
+*.tmp
 
 # Firebase
 app/google-services.json

@@ -50,7 +50,6 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.presentation.screens.common.calculateClampedAspectRatio
 import com.hvasoft.dailydose.presentation.screens.common.DefaultImageAspectRatio
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
@@ -164,7 +163,6 @@ fun AddRoute(
                 viewModel.postSnapshot(
                     title = title.trim(),
                     imageUri = Uri.parse(selectedImageUri),
-                    userId = Constants.currentUser.uid,
                 )
             }
         },

@@ -1,11 +1,6 @@
 package com.hvasoft.dailydose.presentation.screens.home
 
-import android.content.ClipData
 import android.content.Context
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,16 +62,14 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.content.FileProvider
-import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.SubcomposeAsyncImage
-import coil.imageLoader
-import coil.request.ImageRequest
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.domain.common.extension_functions.isCurrentUserOwner
+import com.hvasoft.dailydose.domain.common.extension_functions.isOwnedBy
+import com.hvasoft.dailydose.domain.model.HomeFeedAvailabilityMode
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.presentation.screens.common.DefaultImageAspectRatio
 import com.hvasoft.dailydose.presentation.screens.common.ShimmerPlaceholder
@@ -84,13 +77,10 @@ import com.hvasoft.dailydose.presentation.screens.common.calculateClampedAspectR
 import com.hvasoft.dailydose.presentation.screens.common.formatRelativeTime
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
 import com.hvasoft.dailydose.presentation.theme.Unselected
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
+import java.text.DateFormat
+import java.util.Date
 
-private const val FILE_PROVIDER_AUTHORITY = "com.hvasoft.fileprovider"
 @Composable
 fun HomeRoute(
     viewModel: HomeViewModel,
@@ -99,11 +89,13 @@ fun HomeRoute(
     onShowMessage: (Int) -> Unit,
 ) {
     val pagingItems = viewModel.snapshots.collectAsLazyPagingItems()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val optimisticLikes = remember { mutableStateMapOf<String, SnapshotLikeState>() }
     var pendingDeleteSnapshot by remember { mutableStateOf<Snapshot?>(null) }
     var expandedImage by remember { mutableStateOf<ExpandedImageState?>(null) }
     var shouldScrollToTop by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val currentUserId = viewModel.currentUserIdOrNull()
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -137,11 +129,18 @@ fun HomeRoute(
 
     HomeScreen(
         pagingItems = pagingItems,
+        uiState = uiState,
         optimisticLikes = optimisticLikes,
         listState = listState,
+        currentUserId = currentUserId,
         modifier = modifier,
-        onRetry = viewModel::fetchSnapshots,
+        onRetry = viewModel::retrySync,
         onLikeToggle = { snapshot, isLiked ->
+            if (uiState.actionPolicy == HomeFeedActionPolicy.READ_ONLY_OFFLINE) {
+                onShowMessage(R.string.home_like_offline_unavailable)
+                return@HomeScreen
+            }
+
             optimisticLikes[snapshot.snapshotKey] = SnapshotLikeState(
                 isLiked = isLiked,
                 likeCount = computeLikeCount(snapshot.likeCount, snapshot.isLikedByCurrentUser, isLiked),
@@ -149,23 +148,41 @@ fun HomeRoute(
             viewModel.setLikeSnapshot(snapshot, isLiked)
         },
         onShare = { snapshot ->
+            val canUseRemote = uiState.actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
+            if (snapshot.canShareImage(canUseRemote).not()) {
+                onShowMessage(R.string.home_share_image_unavailable_offline)
+                return@HomeScreen
+            }
+
             scope.launch {
                 runCatching {
-                    shareSnapshot(context, snapshot)
+                    shareSnapshot(context, snapshot, canUseRemote)
                 }.onFailure {
                     onShowMessage(R.string.home_share_image_error)
                 }
             }
         },
         onOpenImage = { snapshot ->
-            snapshot.photoUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                expandedImage = ExpandedImageState(
-                    imageUrl = url,
-                    title = snapshot.title.orEmpty(),
-                )
+            val imageModel = snapshot.preferredPhotoModel(
+                allowRemoteFallback = uiState.actionPolicy == HomeFeedActionPolicy.FULL_ACCESS,
+            )
+            if (imageModel == null) {
+                onShowMessage(R.string.home_image_unavailable_offline)
+                return@HomeScreen
+            }
+
+            expandedImage = ExpandedImageState(
+                imageModel = imageModel,
+                title = snapshot.title.orEmpty(),
+            )
+        },
+        onRequestDelete = { snapshot ->
+            if (uiState.actionPolicy == HomeFeedActionPolicy.READ_ONLY_OFFLINE) {
+                onShowMessage(R.string.home_delete_offline_unavailable)
+            } else {
+                pendingDeleteSnapshot = snapshot
             }
         },
-        onRequestDelete = { pendingDeleteSnapshot = it },
     )
 
     if (pendingDeleteSnapshot != null) {
@@ -195,7 +212,7 @@ fun HomeRoute(
 
     expandedImage?.let { imageState ->
         ExpandedImageViewer(
-            imageUrl = imageState.imageUrl,
+            imageModel = imageState.imageModel,
             title = imageState.title,
             onDismiss = { expandedImage = null },
         )
@@ -205,8 +222,10 @@ fun HomeRoute(
 @Composable
 private fun HomeScreen(
     pagingItems: LazyPagingItems<Snapshot>,
+    uiState: HomeFeedUiState,
     optimisticLikes: Map<String, SnapshotLikeState>,
     listState: androidx.compose.foundation.lazy.LazyListState,
+    currentUserId: String?,
     modifier: Modifier = Modifier,
     onRetry: () -> Unit,
     onLikeToggle: (Snapshot, Boolean) -> Unit,
@@ -216,9 +235,15 @@ private fun HomeScreen(
 ) {
     val context = LocalContext.current
     val loadState = pagingItems.loadState.refresh
-    val isInitialLoading = loadState is LoadState.Loading && pagingItems.itemCount == 0
-    val isError = loadState is LoadState.Error && pagingItems.itemCount == 0
-    val isEmpty = loadState is LoadState.NotLoading && pagingItems.itemCount == 0
+    val isInitialLoading = (loadState is LoadState.Loading && pagingItems.itemCount == 0) ||
+        (uiState.isInitialLoadInProgress && pagingItems.itemCount == 0)
+    val isDatabaseError = loadState is LoadState.Error && pagingItems.itemCount == 0
+    val isOfflineEmpty = uiState.availabilityMode == HomeFeedAvailabilityMode.OFFLINE_EMPTY &&
+        uiState.isRefreshInFlight.not() &&
+        pagingItems.itemCount == 0
+    val isEmpty = loadState is LoadState.NotLoading &&
+        pagingItems.itemCount == 0 &&
+        isOfflineEmpty.not()
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -230,7 +255,14 @@ private fun HomeScreen(
                 )
             }
 
-            isError -> {
+            isOfflineEmpty -> {
+                OfflineEmptyState(
+                    modifier = Modifier.align(Alignment.Center),
+                    onRetry = onRetry,
+                )
+            }
+
+            isDatabaseError -> {
                 ErrorState(
                     modifier = Modifier.align(Alignment.Center),
                     onRetry = onRetry,
@@ -248,13 +280,24 @@ private fun HomeScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        start = 16.dp,
-                        top = 16.dp,
-                        end = 16.dp,
-                        bottom = 16.dp,
+                        start = 8.dp,
+                        top = 8.dp,
+                        end = 8.dp,
+                        bottom = 8.dp,
                     ),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    // The offline messaging is currently disabled as it can be redundant with the empty state and may not provide significant value to users.
+                    // It can be re-enabled in the future if we find a better way to integrate it without causing confusion or redundancy in the UI.
+                    /*if (uiState.showsOfflineMessaging) {
+                        item(key = "home-feed-status") {
+                            HomeFeedStatusPanel(
+                                uiState = uiState,
+                                onRetry = onRetry,
+                            )
+                        }
+                    }*/
+
                     items(
                         count = pagingItems.itemCount,
                         key = { index: Int -> pagingItems[index]?.snapshotKey ?: index },
@@ -263,6 +306,7 @@ private fun HomeScreen(
                         val likeState = optimisticLikes[snapshot.snapshotKey]
                         SnapshotCard(
                             snapshot = snapshot,
+                            actionPolicy = uiState.actionPolicy,
                             isLiked = likeState?.isLiked ?: snapshot.isLikedByCurrentUser,
                             likeCount = likeState?.likeCount ?: snapshot.likeCount.toIntOrNull() ?: 0,
                             onLikeToggle = { onLikeToggle(snapshot, it) },
@@ -271,6 +315,7 @@ private fun HomeScreen(
                             onOpenImage = { onOpenImage(snapshot) },
                             isPreview = LocalInspectionMode.current,
                             context = context,
+                            currentUserId = currentUserId,
                         )
                     }
                 }
@@ -280,8 +325,62 @@ private fun HomeScreen(
 }
 
 @Composable
+internal fun HomeFeedStatusPanel(
+    uiState: HomeFeedUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = when (uiState.availabilityMode) {
+                    HomeFeedAvailabilityMode.REFRESHING_FROM_OFFLINE ->
+                        stringResource(R.string.home_offline_refreshing_title)
+
+                    else -> stringResource(R.string.home_offline_banner_title)
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = when (uiState.availabilityMode) {
+                    HomeFeedAvailabilityMode.REFRESHING_FROM_OFFLINE ->
+                        stringResource(R.string.home_offline_refreshing_message)
+
+                    else -> stringResource(R.string.home_offline_banner_message)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            uiState.lastSuccessfulSyncAt?.let { lastSync ->
+                Text(
+                    text = stringResource(
+                        R.string.home_offline_last_updated,
+                        formatOfflineSyncTime(lastSync),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(text = stringResource(R.string.retry_text))
+            }
+        }
+    }
+}
+
+@Composable
 private fun SnapshotCard(
     snapshot: Snapshot,
+    actionPolicy: HomeFeedActionPolicy,
     isLiked: Boolean,
     likeCount: Int,
     onLikeToggle: (Boolean) -> Unit,
@@ -290,10 +389,16 @@ private fun SnapshotCard(
     onOpenImage: () -> Unit,
     isPreview: Boolean,
     context: Context,
+    currentUserId: String?,
 ) {
     val resources = context.resources
-    val profilePlaceholder = painterResource(R.drawable.image_placeholder)
-    val imagePlaceholder = painterResource(R.drawable.image_placeholder)
+    val allowRemoteFallback = actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
+    val imageError = painterResource(R.drawable.image_error)
+    val mainImageModel = if (isPreview) R.drawable.image_placeholder else snapshot.preferredPhotoModel(allowRemoteFallback)
+    val avatarImageModel = if (isPreview) R.drawable.image_placeholder else snapshot.preferredUserPhotoModel(allowRemoteFallback)
+    val canOpenImage = !isPreview && snapshot.hasAnyImageAvailable(allowRemoteFallback)
+    val canShareImage = !isPreview && snapshot.canShareImage(allowRemoteFallback)
+    val allowMutatingActions = actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
     var imageAspectRatio by remember(snapshot.snapshotKey) {
         mutableFloatStateOf(DefaultImageAspectRatio)
     }
@@ -305,14 +410,14 @@ private fun SnapshotCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SubcomposeAsyncImage(
-                    model = snapshot.userPhotoUrl,
+                    model = avatarImageModel,
                     contentDescription = stringResource(R.string.home_description_profile_user_photo),
                     modifier = Modifier
                         .size(40.dp)
@@ -325,7 +430,7 @@ private fun SnapshotCard(
                     },
                     error = {
                         Image(
-                            painter = profilePlaceholder,
+                            painter = imageError,
                             contentDescription = stringResource(R.string.home_description_profile_user_photo),
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
@@ -345,8 +450,11 @@ private fun SnapshotCard(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                if (snapshot.isCurrentUserOwner()) {
-                    IconButton(onClick = onDelete) {
+                if (snapshot.isOwnedBy(currentUserId)) {
+                    IconButton(
+                        onClick = onDelete,
+                        enabled = allowMutatingActions,
+                    ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_delete),
                             contentDescription = stringResource(R.string.home_description_button_delete),
@@ -356,39 +464,54 @@ private fun SnapshotCard(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            SubcomposeAsyncImage(
-                model = if (isPreview) R.drawable.image_placeholder else snapshot.photoUrl,
-                contentDescription = stringResource(R.string.home_description_img_publication_user),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.large)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .aspectRatio(imageAspectRatio)
-                    .clickable(
-                        enabled = !isPreview && !snapshot.photoUrl.isNullOrBlank(),
-                        onClick = onOpenImage,
-                    ),
-                contentScale = ContentScale.Crop,
-                loading = {
-                    ShimmerPlaceholder(
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                },
-                error = {
-                    Image(
-                        painter = imagePlaceholder,
-                        contentDescription = stringResource(R.string.home_description_img_publication_user),
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                },
-                onSuccess = { state ->
-                    imageAspectRatio = calculateClampedAspectRatio(
-                        width = state.result.drawable.intrinsicWidth,
-                        height = state.result.drawable.intrinsicHeight,
-                    )
-                },
-            )
+
+            if (mainImageModel == null) {
+                LimitedMediaPlaceholder()
+            } else {
+                SubcomposeAsyncImage(
+                    model = mainImageModel,
+                    contentDescription = stringResource(R.string.home_description_img_publication_user),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .aspectRatio(imageAspectRatio)
+                        .clickable(
+                            enabled = canOpenImage,
+                            onClick = onOpenImage,
+                        ),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        ShimmerPlaceholder(
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
+                    error = {
+                        Image(
+                            painter = imageError,
+                            contentDescription = stringResource(R.string.home_description_img_publication_user),
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    },
+                    onSuccess = { state ->
+                        imageAspectRatio = calculateClampedAspectRatio(
+                            width = state.result.drawable.intrinsicWidth,
+                            height = state.result.drawable.intrinsicHeight,
+                        )
+                    },
+                )
+            }
+
+            if (snapshot.isOfflineMediaPartial && actionPolicy == HomeFeedActionPolicy.READ_ONLY_OFFLINE) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.home_offline_media_limited),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -400,6 +523,7 @@ private fun SnapshotCard(
                 ) {
                     IconToggleButton(
                         checked = isLiked,
+                        enabled = allowMutatingActions,
                         onCheckedChange = onLikeToggle,
                     ) {
                         Image(
@@ -422,7 +546,7 @@ private fun SnapshotCard(
                 }
                 IconButton(
                     onClick = onShare,
-                    enabled = !isPreview,
+                    enabled = canShareImage,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_share),
@@ -435,8 +559,35 @@ private fun SnapshotCard(
 }
 
 @Composable
+private fun LimitedMediaPlaceholder(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.image_placeholder),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp),
+            contentScale = ContentScale.Crop,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.home_offline_media_limited),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
 private fun ExpandedImageViewer(
-    imageUrl: String,
+    imageModel: Any,
     title: String,
     onDismiss: () -> Unit,
 ) {
@@ -487,7 +638,7 @@ private fun ExpandedImageViewer(
                 },
         ) {
             SubcomposeAsyncImage(
-                model = imageUrl,
+                model = imageModel,
                 contentDescription = stringResource(R.string.home_description_img_publication_user),
                 modifier = Modifier
                     .fillMaxSize()
@@ -560,6 +711,42 @@ private fun ExpandedImageViewer(
 }
 
 @Composable
+internal fun OfflineEmptyState(
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit,
+) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.empty_state),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(250.dp),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.home_offline_empty_title),
+            style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.home_offline_empty_message),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onRetry) {
+            Text(text = stringResource(R.string.retry_text))
+        }
+    }
+}
+
+@Composable
 private fun EmptyState(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.padding(24.dp),
@@ -582,6 +769,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         Text(
             text = stringResource(R.string.text_empty_state_snapshots),
             style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -599,70 +787,13 @@ private fun ErrorState(
         Text(
             text = stringResource(R.string.home_database_access_error),
             style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(12.dp))
         Button(onClick = onRetry) {
             Text(text = stringResource(R.string.retry_text))
         }
     }
-}
-
-private suspend fun shareSnapshot(
-    context: Context,
-    snapshot: Snapshot,
-) {
-    val shareText = context.getString(R.string.home_description_button_share, snapshot.title)
-    val imageUrl = snapshot.photoUrl
-    if (imageUrl.isNullOrBlank()) {
-        context.startActivity(
-            Intent.createChooser(
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, shareText)
-                },
-                context.getString(R.string.home_description_title_share),
-            )
-        )
-        return
-    }
-
-    val imageUri = withContext(Dispatchers.IO) {
-        createShareableImageUri(context, imageUrl, snapshot.snapshotKey)
-    }
-    context.startActivity(
-        Intent.createChooser(
-            Intent(Intent.ACTION_SEND).apply {
-                type = "image/*"
-                putExtra(Intent.EXTRA_STREAM, imageUri)
-                putExtra(Intent.EXTRA_TEXT, shareText)
-                clipData = ClipData.newUri(context.contentResolver, "snapshot_image", imageUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            },
-            context.getString(R.string.home_description_title_share),
-        )
-    )
-}
-
-private suspend fun createShareableImageUri(
-    context: Context,
-    imageUrl: String,
-    snapshotKey: String,
-): Uri {
-    val request = ImageRequest.Builder(context)
-        .data(imageUrl.toUri())
-        .allowHardware(false)
-        .build()
-    val result = context.imageLoader.execute(request)
-    val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
-        ?: error("Unable to decode image")
-    val shareDirectory = File(context.cacheDir, "shared_images").apply {
-        mkdirs()
-    }
-    val shareFile = File(shareDirectory, "$snapshotKey.jpg")
-    FileOutputStream(shareFile).use { output ->
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
-    }
-    return FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, shareFile)
 }
 
 private fun computeLikeCount(
@@ -694,13 +825,16 @@ private fun clampOffset(
     )
 }
 
+private fun formatOfflineSyncTime(timestamp: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(timestamp))
+
 private data class SnapshotLikeState(
     val isLiked: Boolean,
     val likeCount: Int,
 )
 
 private data class ExpandedImageState(
-    val imageUrl: String,
+    val imageModel: Any,
     val title: String,
 )
 
@@ -713,11 +847,13 @@ private fun SnapshotCardPreview() {
                 title = "A peaceful morning",
                 dateTime = System.currentTimeMillis() - 3_600_000,
                 photoUrl = "",
+                idUserOwner = "preview-owner",
                 userName = "Henry",
                 userPhotoUrl = "",
                 snapshotKey = "preview",
                 likeCount = "7",
             ),
+            actionPolicy = HomeFeedActionPolicy.FULL_ACCESS,
             isLiked = true,
             likeCount = 7,
             onLikeToggle = {},
@@ -726,6 +862,7 @@ private fun SnapshotCardPreview() {
             onOpenImage = {},
             isPreview = true,
             context = LocalContext.current,
+            currentUserId = "preview-owner",
         )
     }
 }
