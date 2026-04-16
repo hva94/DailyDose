@@ -8,12 +8,13 @@ data class HomeFeedUiState(
     val availabilityMode: HomeFeedAvailabilityMode = HomeFeedAvailabilityMode.OFFLINE_EMPTY,
     val lastSuccessfulSyncAt: Long? = null,
     val lastRefreshResult: HomeFeedLastRefreshResult = HomeFeedLastRefreshResult.NEVER_SYNCED,
-    val isRefreshInFlight: Boolean = false,
+    val isBackgroundRefreshing: Boolean = false,
+    val showsRefreshIndicator: Boolean = false,
     val actionPolicy: HomeFeedActionPolicy = HomeFeedActionPolicy.READ_ONLY_OFFLINE,
     val hasRetainedContent: Boolean = false,
 ) {
     val isInitialLoadInProgress: Boolean
-        get() = isRefreshInFlight &&
+        get() = isBackgroundRefreshing &&
             lastRefreshResult == HomeFeedLastRefreshResult.NEVER_SYNCED &&
             hasRetainedContent.not()
 
@@ -21,26 +22,24 @@ data class HomeFeedUiState(
         get() = availabilityMode != HomeFeedAvailabilityMode.ONLINE_FRESH
 
     companion object {
-        fun from(syncState: HomeFeedSyncState, isRefreshInFlight: Boolean): HomeFeedUiState {
-            val availabilityMode = if (isRefreshInFlight && syncState.hasRetainedContent) {
-                HomeFeedAvailabilityMode.REFRESHING_FROM_OFFLINE
-            } else {
-                syncState.availabilityMode
-            }
-
-            return HomeFeedUiState(
-                availabilityMode = availabilityMode,
+        fun from(
+            syncState: HomeFeedSyncState,
+            isBackgroundRefreshing: Boolean,
+            showsRefreshIndicator: Boolean,
+        ): HomeFeedUiState =
+            HomeFeedUiState(
+                availabilityMode = syncState.availabilityMode,
                 lastSuccessfulSyncAt = syncState.lastSuccessfulSyncAt,
                 lastRefreshResult = syncState.lastRefreshResult,
-                isRefreshInFlight = isRefreshInFlight,
-                actionPolicy = if (availabilityMode == HomeFeedAvailabilityMode.ONLINE_FRESH) {
+                isBackgroundRefreshing = isBackgroundRefreshing,
+                showsRefreshIndicator = showsRefreshIndicator,
+                actionPolicy = if (syncState.availabilityMode == HomeFeedAvailabilityMode.ONLINE_FRESH) {
                     HomeFeedActionPolicy.FULL_ACCESS
                 } else {
                     HomeFeedActionPolicy.READ_ONLY_OFFLINE
                 },
                 hasRetainedContent = syncState.hasRetainedContent,
             )
-        }
     }
 }
 

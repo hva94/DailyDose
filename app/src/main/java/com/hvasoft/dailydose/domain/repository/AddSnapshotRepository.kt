@@ -1,6 +1,6 @@
 package com.hvasoft.dailydose.domain.repository
 
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 
 interface AddSnapshotRepository {
 
@@ -8,5 +8,5 @@ interface AddSnapshotRepository {
         localImageContentUri: String,
         title: String,
         onProgress: (Int) -> Unit,
-    ): PostSnapshotOutcome
+    ): CreateSnapshotResult
 }

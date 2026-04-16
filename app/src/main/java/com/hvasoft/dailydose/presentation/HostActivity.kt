@@ -51,6 +51,7 @@ import com.google.firebase.remoteconfig.ktx.remoteConfigSettings
 import com.hvasoft.dailydose.BuildConfig
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.local.ProfileLocalCache
 import com.hvasoft.dailydose.data.network.model.User
 import com.hvasoft.dailydose.presentation.screens.add.AddRoute
 import com.hvasoft.dailydose.presentation.screens.add.AddViewModel
@@ -78,7 +79,7 @@ class HostActivity : ComponentActivity() {
     private var lastAuthenticatedUserId: String? = null
 
     private var selectedDestination by mutableStateOf(MainDestination.HOME)
-    private var homeRefreshSignal by mutableIntStateOf(0)
+    private var homeScrollSignal by mutableIntStateOf(0)
     private var profileRefreshSignal by mutableIntStateOf(0)
     private var pendingUpdateApkUrl by mutableStateOf<String?>(null)
     private var snackbarRequest by mutableStateOf<SnackbarRequest?>(null)
@@ -127,7 +128,7 @@ class HostActivity : ComponentActivity() {
                     homeContent = {
                         HomeRoute(
                             viewModel = homeViewModel,
-                            refreshSignal = homeRefreshSignal,
+                            scrollSignal = homeScrollSignal,
                             modifier = Modifier.fillMaxSize(),
                             onShowMessage = ::showPopUpMessage,
                         )
@@ -135,10 +136,12 @@ class HostActivity : ComponentActivity() {
                     addContent = {
                         AddRoute(
                             viewModel = addViewModel,
-                            refreshSignal = homeRefreshSignal,
                             modifier = Modifier.fillMaxSize(),
                             onShowMessage = ::showPopUpMessage,
-                            onSnapshotPosted = ::onSnapshotPosted,
+                            onSnapshotPosted = { snapshot ->
+                                homeViewModel.cachePostedSnapshot(snapshot)
+                                selectedDestination = MainDestination.HOME
+                            },
                         )
                     },
                     profileContent = {
@@ -149,7 +152,6 @@ class HostActivity : ComponentActivity() {
                             onShowMessage = ::showPopUpMessage,
                             onSignedOut = {
                                 selectedDestination = MainDestination.HOME
-                                homeRefreshSignal += 1
                             },
                         )
                     },
@@ -174,6 +176,7 @@ class HostActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        maybeRefreshHomeOnResume()
         firebaseAuth?.addAuthStateListener(authListener)
         promoteSuccessfulPendingDownloadIfNeeded()
     }
@@ -247,6 +250,7 @@ class HostActivity : ComponentActivity() {
             if (auth.currentUser == null) {
                 lastAuthenticatedUserId?.let(homeViewModel::clearOfflineSnapshots)
                 lastAuthenticatedUserId = null
+                profileViewModel.clearProfileState()
                 selectedDestination = MainDestination.HOME
                 if (!isAuthFlowInProgress) {
                     isAuthFlowInProgress = true
@@ -273,24 +277,62 @@ class HostActivity : ComponentActivity() {
                     homeViewModel.clearOfflineSnapshots(previousUserId)
                 }
                 lastAuthenticatedUserId = currentUserId
+                profileViewModel.seedSignedInUser(
+                    userId = currentUserId,
+                    displayName = currentUser.displayName.orEmpty(),
+                    email = currentUser.email.orEmpty(),
+                    photoUrl = currentUser.photoUrl?.toString().orEmpty(),
+                )
                 ensureCurrentUserRecord(currentUser)
-                homeRefreshSignal += 1
-                profileRefreshSignal += 1
+                profileViewModel.loadCurrentProfile()
+                if (previousUserId != currentUserId) {
+                    homeViewModel.fetchSnapshots()
+                    profileRefreshSignal += 1
+                }
             }
         }
     }
 
     private fun ensureCurrentUserRecord(currentUser: com.google.firebase.auth.FirebaseUser) {
+        val authFallbackDisplayName = currentUser.displayName
+            ?.takeIf(String::isNotBlank)
+            ?: currentUser.email
+                ?.substringBefore('@')
+                .orEmpty()
+        val authFallbackPhotoUrl = currentUser.photoUrl?.toString().orEmpty()
+        val authFallbackEmail = currentUser.email.orEmpty()
+        getSharedPreferences(ProfileLocalCache.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(ProfileLocalCache.displayNameKey(currentUser.uid), authFallbackDisplayName)
+            .putString(ProfileLocalCache.photoUrlKey(currentUser.uid), authFallbackPhotoUrl)
+            .putString(ProfileLocalCache.emailKey(currentUser.uid), authFallbackEmail)
+            .apply()
+
         val userReference = FirebaseDatabase.getInstance()
             .getReference(Constants.USERS_PATH)
             .child(currentUser.uid)
 
         userReference.get().addOnSuccessListener { snapshot ->
+            val currentUserRecord = snapshot.getValue(User::class.java)
+            val resolvedDisplayName = currentUserRecord?.userName
+                ?.takeIf(String::isNotBlank)
+                ?: currentUser.displayName.orEmpty()
+            val resolvedPhotoUrl = currentUserRecord?.photoUrl
+                ?.takeIf(String::isNotBlank)
+                ?: currentUser.photoUrl?.toString().orEmpty()
+
+            getSharedPreferences(ProfileLocalCache.PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(ProfileLocalCache.displayNameKey(currentUser.uid), resolvedDisplayName)
+                .putString(ProfileLocalCache.photoUrlKey(currentUser.uid), resolvedPhotoUrl)
+                .putString(ProfileLocalCache.emailKey(currentUser.uid), authFallbackEmail)
+                .apply()
+
             if (!snapshot.exists()) {
                 userReference.setValue(
                     User(
-                        userName = currentUser.displayName.orEmpty(),
-                        photoUrl = currentUser.photoUrl?.toString().orEmpty(),
+                        userName = resolvedDisplayName,
+                        photoUrl = resolvedPhotoUrl,
                     )
                 )
             }
@@ -304,7 +346,7 @@ class HostActivity : ComponentActivity() {
         when (destination) {
             MainDestination.HOME -> {
                 if (wasSelected) {
-                    homeRefreshSignal += 1
+                    homeScrollSignal += 1
                 }
             }
 
@@ -324,9 +366,13 @@ class HostActivity : ComponentActivity() {
         )
     }
 
-    private fun onSnapshotPosted() {
-        selectedDestination = MainDestination.HOME
-        homeRefreshSignal += 1
+    private fun maybeRefreshHomeOnResume() {
+        val currentUserId = firebaseAuth?.currentUser?.uid ?: return
+        if (currentUserId != lastAuthenticatedUserId) return
+        if (selectedDestination != MainDestination.HOME) return
+        if (homeViewModel.shouldAutoRefreshOnResume(System.currentTimeMillis())) {
+            homeViewModel.fetchSnapshots(reloadSource = false)
+        }
     }
 
     private fun getPendingDownloadId(): Long? {
@@ -360,39 +406,6 @@ class HostActivity : ComponentActivity() {
                 DownloadManager.STATUS_FAILED -> clearPendingDownloadId()
             }
         }
-    }
-
-    private fun getReadyDownloadedApkUri(): Uri? {
-        val downloadId = updaterPrefs.getLong(PREF_READY_DOWNLOAD_ID, -1L)
-        if (downloadId == -1L) return null
-
-        val downloadManager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-        val query = DownloadManager.Query().setFilterById(downloadId)
-
-        downloadManager.query(query)?.use { cursor ->
-            if (!cursor.moveToFirst()) {
-                clearReadyDownloadId()
-                return null
-            }
-
-            val status =
-                cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-            if (status != DownloadManager.STATUS_SUCCESSFUL) {
-                if (status == DownloadManager.STATUS_FAILED) {
-                    clearReadyDownloadId()
-                }
-                return null
-            }
-        }
-
-        return downloadManager.getUriForDownloadedFile(downloadId)?.also { return it }.run {
-            clearReadyDownloadId()
-            null
-        }
-    }
-
-    private fun clearReadyDownloadId() {
-        updaterPrefs.edit().remove(PREF_READY_DOWNLOAD_ID).apply()
     }
 
     companion object {

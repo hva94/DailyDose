@@ -5,9 +5,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.ExperimentalPagingApi
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
 import com.hvasoft.dailydose.di.DispatcherIO
-import com.hvasoft.dailydose.R
+import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
@@ -15,6 +16,7 @@ import com.hvasoft.dailydose.domain.model.Snapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +35,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     @DispatcherIO private val dispatcherIO: CoroutineDispatcher,
     private val getSnapshotsUseCase: GetSnapshotsUseCase,
+    private val cachePostedSnapshotUseCase: CachePostedSnapshotUseCase,
     private val toggleUserLikeUseCase: ToggleUserLikeUseCase,
     private val deleteSnapshotUseCase: DeleteSnapshotUseCase,
     private val authSessionProvider: AuthSessionProvider,
@@ -40,6 +43,7 @@ class HomeViewModel @Inject constructor(
 
     private val sourceSignal = MutableStateFlow(0)
     private val isRefreshInFlight = MutableStateFlow(false)
+    private val isRefreshIndicatorVisible = MutableStateFlow(false)
     private val _events = MutableSharedFlow<Int>(extraBufferCapacity = 4)
     val events = _events.asSharedFlow()
 
@@ -55,7 +59,10 @@ class HomeViewModel @Inject constructor(
             getSnapshotsUseCase.observeSyncState()
         }
         .combine(isRefreshInFlight) { syncState, refreshing ->
-            HomeFeedUiState.from(syncState, refreshing)
+            syncState to refreshing
+        }
+        .combine(isRefreshIndicatorVisible) { (syncState, refreshing), showsRefreshIndicator ->
+            HomeFeedUiState.from(syncState, refreshing, showsRefreshIndicator)
         }
         .stateIn(
             scope = viewModelScope,
@@ -64,15 +71,36 @@ class HomeViewModel @Inject constructor(
         )
 
     @OptIn(ExperimentalPagingApi::class)
-    fun fetchSnapshots() {
+    fun fetchSnapshots(reloadSource: Boolean = true) {
         if (authSessionProvider.currentUserIdOrNull() == null) return
-        sourceSignal.value += 1
-        refreshSnapshots(emitFailureMessage = false)
+        if (reloadSource) {
+            sourceSignal.value += 1
+        }
+        refreshSnapshots(
+            emitFailureMessage = false,
+            refreshTrigger = RefreshTrigger.AUTO,
+        )
     }
 
     fun retrySync() {
         if (authSessionProvider.currentUserIdOrNull() == null) return
-        refreshSnapshots(emitFailureMessage = true)
+        refreshSnapshots(
+            emitFailureMessage = true,
+            refreshTrigger = RefreshTrigger.MANUAL,
+        )
+    }
+
+    fun cachePostedSnapshot(snapshot: Snapshot) {
+        viewModelScope.launch(dispatcherIO) {
+            cachePostedSnapshotUseCase.invoke(snapshot)
+        }
+    }
+
+    fun shouldAutoRefreshOnResume(nowMillis: Long): Boolean {
+        if (authSessionProvider.currentUserIdOrNull() == null) return false
+        if (uiState.value.isBackgroundRefreshing) return false
+        val lastSuccessfulSyncAt = uiState.value.lastSuccessfulSyncAt ?: return false
+        return nowMillis - lastSuccessfulSyncAt >= AUTO_REFRESH_STALE_MS
     }
 
     fun currentUserIdOrNull(): String? = authSessionProvider.currentUserIdOrNull()
@@ -99,8 +127,6 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(dispatcherIO) {
             runCatching {
                 deleteSnapshotUseCase.invoke(snapshot)
-            }.onSuccess {
-                refreshSnapshots(emitFailureMessage = false)
             }.onFailure {
                 _events.tryEmit(R.string.error_unknown)
             }
@@ -114,16 +140,49 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun refreshSnapshots(emitFailureMessage: Boolean) {
+    private fun refreshSnapshots(
+        emitFailureMessage: Boolean,
+        refreshTrigger: RefreshTrigger,
+    ) {
+        if (isRefreshInFlight.value) return
         viewModelScope.launch(dispatcherIO) {
             isRefreshInFlight.value = true
-            getSnapshotsUseCase.refresh()
-                .onFailure {
-                    if (emitFailureMessage) {
-                        _events.tryEmit(R.string.error_connectivity)
+            val indicatorJob = when (refreshTrigger) {
+                RefreshTrigger.MANUAL -> {
+                    isRefreshIndicatorVisible.value = true
+                    null
+                }
+
+                RefreshTrigger.AUTO -> launch {
+                    delay(AUTO_REFRESH_INDICATOR_DELAY_MS)
+                    if (isRefreshInFlight.value) {
+                        isRefreshIndicatorVisible.value = true
                     }
                 }
-            isRefreshInFlight.value = false
+            }
+
+            try {
+                getSnapshotsUseCase.refresh()
+                    .onFailure {
+                        if (emitFailureMessage) {
+                            _events.tryEmit(R.string.error_connectivity)
+                        }
+                    }
+            } finally {
+                indicatorJob?.cancel()
+                isRefreshIndicatorVisible.value = false
+                isRefreshInFlight.value = false
+            }
         }
+    }
+
+    private enum class RefreshTrigger {
+        AUTO,
+        MANUAL,
+    }
+
+    private companion object {
+        const val AUTO_REFRESH_STALE_MS = 10 * 60 * 1000L
+        const val AUTO_REFRESH_INDICATOR_DELAY_MS = 1_000L
     }
 }

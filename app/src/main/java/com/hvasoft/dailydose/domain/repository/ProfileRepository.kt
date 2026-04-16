@@ -6,6 +6,8 @@ interface ProfileRepository {
 
     suspend fun loadUserProfile(userId: String): Result<UserProfile?>
 
+    suspend fun getCachedAvatarLocalPath(userId: String): String?
+
     suspend fun uploadProfilePhoto(
         userId: String,
         localImageContentUri: String,

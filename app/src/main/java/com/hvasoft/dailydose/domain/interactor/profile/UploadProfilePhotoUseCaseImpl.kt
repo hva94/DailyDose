@@ -1,5 +1,6 @@
 package com.hvasoft.dailydose.domain.interactor.profile
 
+import com.hvasoft.dailydose.domain.model.UserProfile
 import com.hvasoft.dailydose.domain.repository.ProfileRepository
 import javax.inject.Inject
 
@@ -12,7 +13,7 @@ class UploadProfilePhotoUseCaseImpl @Inject constructor(
         localImageContentUri: String,
         currentUserName: String,
         onProgress: (Int) -> Unit,
-    ): Result<String> {
+    ): Result<UserProfile> {
         val url = profileRepository.uploadProfilePhoto(userId, localImageContentUri, onProgress)
             .getOrElse { return Result.failure(it) }
         profileRepository.mergeAndSaveUserRecord(
@@ -21,6 +22,9 @@ class UploadProfilePhotoUseCaseImpl @Inject constructor(
             photoUrl = url,
             fallbackDisplayName = currentUserName,
         ).getOrElse { return Result.failure(it) }
-        return Result.success(url)
+        val updatedProfile = profileRepository.loadUserProfile(userId)
+            .getOrElse { return Result.failure(it) }
+            ?: return Result.failure(IllegalStateException("Updated profile is missing"))
+        return Result.success(updatedProfile)
     }
 }

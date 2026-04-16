@@ -1,6 +1,7 @@
 package com.hvasoft.dailydose.data.network.data_source
 
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.data.network.model.User
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.Snapshot
 import kotlinx.coroutines.flow.Flow
 
@@ -14,6 +15,7 @@ interface RemoteDatabaseService {
     suspend fun getUserPhotoUrlOnce(idUser: String?): String
     fun getUserName(idUser: String?): Flow<String>
     suspend fun getUserNameOnce(idUser: String?): String
+    suspend fun getUsersOnce(userIds: Set<String>): Map<String, User>
     suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int
     suspend fun deleteSnapshot(snapshot: Snapshot): Int
 
@@ -21,5 +23,5 @@ interface RemoteDatabaseService {
         localImageContentUri: String,
         title: String,
         onProgress: (Int) -> Unit,
-    ): PostSnapshotOutcome
+    ): CreateSnapshotResult
 }

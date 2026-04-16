@@ -3,9 +3,11 @@ package com.hvasoft.dailydose.data.repository
 import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseUser
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
+import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
 import com.hvasoft.dailydose.data.local.OfflineFeedMapper
+import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -34,10 +36,12 @@ class HomeRepositoryRefreshTest {
         repository = HomeRepositoryImpl(
             remoteDatabaseService = mockk(relaxed = true),
             offlineFeedItemDao = mockk<OfflineFeedItemDao>(relaxed = true),
+            offlineMediaAssetDao = mockk<OfflineMediaAssetDao>(relaxed = true),
             feedSyncStateDao = mockk<FeedSyncStateDao>(relaxed = true),
             offlineFeedMapper = OfflineFeedMapper(),
             refreshCoordinator = refreshCoordinator,
             authSessionProvider = authSessionProvider,
+            feedAssetStorage = mockk<FeedAssetStorage>(relaxed = true),
         )
     }
 

@@ -1,7 +1,7 @@
 package com.hvasoft.dailydose.data.repository
 
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.repository.AddSnapshotRepository
 import javax.inject.Inject
 
@@ -13,6 +13,6 @@ class AddSnapshotRepositoryImpl @Inject constructor(
         localImageContentUri: String,
         title: String,
         onProgress: (Int) -> Unit,
-    ): PostSnapshotOutcome =
+    ): CreateSnapshotResult =
         remoteDatabaseService.publishSnapshot(localImageContentUri, title, onProgress)
 }

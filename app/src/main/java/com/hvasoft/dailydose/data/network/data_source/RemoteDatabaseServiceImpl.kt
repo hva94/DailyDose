@@ -10,8 +10,12 @@ import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.network.model.SnapshotDTO
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.data.network.model.User
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.Snapshot
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -121,6 +125,23 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             .orEmpty()
     }
 
+    override suspend fun getUsersOnce(userIds: Set<String>): Map<String, User> = withContext(Dispatchers.IO) {
+        val uniqueIds = userIds.filter(String::isNotBlank).toSet()
+        if (uniqueIds.isEmpty()) {
+            return@withContext emptyMap()
+        }
+
+        coroutineScope {
+            uniqueIds.map { userId ->
+                async {
+                    val snapshot = usersDatabase.child(userId).get().await()
+                    val user = snapshot.getValue(User::class.java) ?: User()
+                    userId to user.apply { id = userId }
+                }
+            }.awaitAll().toMap()
+        }
+    }
+
     override suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int {
         val currentUserId = authSessionProvider.requireCurrentUserId()
         val userLikeReference = snapshotsDatabase
@@ -156,12 +177,14 @@ class RemoteDatabaseServiceImpl @Inject constructor(
         localImageContentUri: String,
         title: String,
         onProgress: (Int) -> Unit,
-    ): PostSnapshotOutcome = withContext(Dispatchers.IO) {
+    ): CreateSnapshotResult = withContext(Dispatchers.IO) {
         try {
+            val currentUser = authSessionProvider.currentUserSnapshotOrNull()
+                ?: return@withContext CreateSnapshotResult.SaveFailed
             val userId = authSessionProvider.requireCurrentUserId()
             val uri = Uri.parse(localImageContentUri)
             val key = snapshotsDatabase.push().key
-                ?: return@withContext PostSnapshotOutcome.SAVE_FAILED
+                ?: return@withContext CreateSnapshotResult.SaveFailed
 
             val uploadTask = snapshotsRootStorage.child(userId).child(key).putFile(uri)
             uploadTask.addOnProgressListener { taskSnapshot ->
@@ -178,11 +201,23 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                 photoUrl = downloadUri.toString(),
             )
             snapshotsDatabase.child(key).setValue(dto).await()
-            PostSnapshotOutcome.SUCCESS
+            CreateSnapshotResult.Success(
+                snapshot = Snapshot(
+                    title = dto.title,
+                    dateTime = dto.dateTime,
+                    photoUrl = dto.photoUrl,
+                    idUserOwner = dto.idUserOwner,
+                    snapshotKey = key,
+                    userName = currentUser.displayName,
+                    userPhotoUrl = currentUser.photoUrl,
+                    likeCount = "0",
+                    syncedAt = dto.dateTime,
+                ),
+            )
         } catch (_: StorageException) {
-            PostSnapshotOutcome.IMAGE_UPLOAD_FAILED
+            CreateSnapshotResult.ImageUploadFailed
         } catch (_: Exception) {
-            PostSnapshotOutcome.SAVE_FAILED
+            CreateSnapshotResult.SaveFailed
         }
     }
 }

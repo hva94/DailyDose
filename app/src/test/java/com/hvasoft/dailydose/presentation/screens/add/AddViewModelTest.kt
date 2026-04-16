@@ -4,7 +4,7 @@ import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import com.hvasoft.dailydose.MainDispatcherRule
 import com.hvasoft.dailydose.domain.interactor.add.CreateSnapshotUseCase
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,7 +29,7 @@ class AddViewModelTest {
                     title: String,
                     localImageContentUri: String,
                     onProgress: (Int) -> Unit,
-                ): PostSnapshotOutcome = PostSnapshotOutcome.SAVE_FAILED
+                ): CreateSnapshotResult = CreateSnapshotResult.SaveFailed
             },
         )
 

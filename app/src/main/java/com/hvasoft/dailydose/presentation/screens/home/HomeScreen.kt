@@ -26,17 +26,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,16 +82,16 @@ import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeRoute(
     viewModel: HomeViewModel,
-    refreshSignal: Int,
+    scrollSignal: Int,
     modifier: Modifier = Modifier,
     onShowMessage: (Int) -> Unit,
 ) {
     val pagingItems = viewModel.snapshots.collectAsLazyPagingItems()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val optimisticLikes = remember { mutableStateMapOf<String, SnapshotLikeState>() }
     var pendingDeleteSnapshot by remember { mutableStateOf<Snapshot?>(null) }
     var expandedImage by remember { mutableStateOf<ExpandedImageState?>(null) }
     var shouldScrollToTop by remember { mutableStateOf(false) }
@@ -105,10 +106,8 @@ fun HomeRoute(
         }
     }
 
-    LaunchedEffect(refreshSignal) {
-        optimisticLikes.clear()
-        shouldScrollToTop = refreshSignal > 0
-        viewModel.fetchSnapshots()
+    LaunchedEffect(scrollSignal) {
+        shouldScrollToTop = scrollSignal > 0
     }
 
     LaunchedEffect(
@@ -130,21 +129,16 @@ fun HomeRoute(
     HomeScreen(
         pagingItems = pagingItems,
         uiState = uiState,
-        optimisticLikes = optimisticLikes,
         listState = listState,
         currentUserId = currentUserId,
         modifier = modifier,
         onRetry = viewModel::retrySync,
+        onRefresh = viewModel::retrySync,
         onLikeToggle = { snapshot, isLiked ->
             if (uiState.actionPolicy == HomeFeedActionPolicy.READ_ONLY_OFFLINE) {
                 onShowMessage(R.string.home_like_offline_unavailable)
                 return@HomeScreen
             }
-
-            optimisticLikes[snapshot.snapshotKey] = SnapshotLikeState(
-                isLiked = isLiked,
-                likeCount = computeLikeCount(snapshot.likeCount, snapshot.isLikedByCurrentUser, isLiked),
-            )
             viewModel.setLikeSnapshot(snapshot, isLiked)
         },
         onShare = { snapshot ->
@@ -193,7 +187,6 @@ fun HomeRoute(
                 TextButton(
                     onClick = {
                         pendingDeleteSnapshot?.let { snapshot ->
-                            optimisticLikes.remove(snapshot.snapshotKey)
                             viewModel.deleteSnapshot(snapshot)
                         }
                         pendingDeleteSnapshot = null
@@ -219,15 +212,16 @@ fun HomeRoute(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeScreen(
     pagingItems: LazyPagingItems<Snapshot>,
     uiState: HomeFeedUiState,
-    optimisticLikes: Map<String, SnapshotLikeState>,
     listState: androidx.compose.foundation.lazy.LazyListState,
     currentUserId: String?,
     modifier: Modifier = Modifier,
     onRetry: () -> Unit,
+    onRefresh: () -> Unit,
     onLikeToggle: (Snapshot, Boolean) -> Unit,
     onShare: (Snapshot) -> Unit,
     onOpenImage: (Snapshot) -> Unit,
@@ -239,84 +233,87 @@ private fun HomeScreen(
         (uiState.isInitialLoadInProgress && pagingItems.itemCount == 0)
     val isDatabaseError = loadState is LoadState.Error && pagingItems.itemCount == 0
     val isOfflineEmpty = uiState.availabilityMode == HomeFeedAvailabilityMode.OFFLINE_EMPTY &&
-        uiState.isRefreshInFlight.not() &&
+        uiState.isBackgroundRefreshing.not() &&
         pagingItems.itemCount == 0
     val isEmpty = loadState is LoadState.NotLoading &&
         pagingItems.itemCount == 0 &&
         isOfflineEmpty.not()
 
-    Box(
+    PullToRefreshBox(
+        isRefreshing = uiState.showsRefreshIndicator,
+        onRefresh = onRefresh,
         modifier = modifier.fillMaxSize(),
     ) {
-        when {
-            isInitialLoading -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
+        Box(
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            when {
+                isInitialLoading -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+               }
 
-            isOfflineEmpty -> {
-                OfflineEmptyState(
-                    modifier = Modifier.align(Alignment.Center),
-                    onRetry = onRetry,
-                )
-            }
+                isOfflineEmpty -> {
+                    OfflineEmptyState(
+                        modifier = Modifier.align(Alignment.Center),
+                        onRetry = onRetry,
+                    )
+                }
 
-            isDatabaseError -> {
-                ErrorState(
-                    modifier = Modifier.align(Alignment.Center),
-                    onRetry = onRetry,
-                )
-            }
+                isDatabaseError -> {
+                    ErrorState(
+                        modifier = Modifier.align(Alignment.Center),
+                        onRetry = onRetry,
+                    )
+                }
 
-            isEmpty -> {
-                EmptyState(
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
+                isEmpty -> {
+                    EmptyState(
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
 
-            else -> {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 8.dp,
-                        top = 8.dp,
-                        end = 8.dp,
-                        bottom = 8.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    // The offline messaging is currently disabled as it can be redundant with the empty state and may not provide significant value to users.
-                    // It can be re-enabled in the future if we find a better way to integrate it without causing confusion or redundancy in the UI.
-                    /*if (uiState.showsOfflineMessaging) {
-                        item(key = "home-feed-status") {
-                            HomeFeedStatusPanel(
-                                uiState = uiState,
-                                onRetry = onRetry,
+                else -> {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 8.dp,
+                            top = 8.dp,
+                            end = 8.dp,
+                            bottom = 8.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        if (uiState.showsOfflineMessaging) {
+                            item(key = "home-feed-status") {
+                                HomeFeedStatusPanel(
+                                    uiState = uiState,
+                                    onRetry = onRetry,
+                                )
+                            }
+                        }
+
+                        items(
+                            count = pagingItems.itemCount,
+                            key = { index: Int -> pagingItems[index]?.snapshotKey ?: index },
+                        ) { index: Int ->
+                            val snapshot = pagingItems[index] ?: return@items
+                            SnapshotCard(
+                                snapshot = snapshot,
+                                actionPolicy = uiState.actionPolicy,
+                                isLiked = snapshot.isLikedByCurrentUser,
+                                likeCount = snapshot.likeCount.toIntOrNull() ?: 0,
+                                onLikeToggle = { onLikeToggle(snapshot, it) },
+                                onDelete = { onRequestDelete(snapshot) },
+                                onShare = { onShare(snapshot) },
+                                onOpenImage = { onOpenImage(snapshot) },
+                                isPreview = LocalInspectionMode.current,
+                                context = context,
+                                currentUserId = currentUserId,
                             )
                         }
-                    }*/
-
-                    items(
-                        count = pagingItems.itemCount,
-                        key = { index: Int -> pagingItems[index]?.snapshotKey ?: index },
-                    ) { index: Int ->
-                        val snapshot = pagingItems[index] ?: return@items
-                        val likeState = optimisticLikes[snapshot.snapshotKey]
-                        SnapshotCard(
-                            snapshot = snapshot,
-                            actionPolicy = uiState.actionPolicy,
-                            isLiked = likeState?.isLiked ?: snapshot.isLikedByCurrentUser,
-                            likeCount = likeState?.likeCount ?: snapshot.likeCount.toIntOrNull() ?: 0,
-                            onLikeToggle = { onLikeToggle(snapshot, it) },
-                            onDelete = { onRequestDelete(snapshot) },
-                            onShare = { onShare(snapshot) },
-                            onOpenImage = { onOpenImage(snapshot) },
-                            isPreview = LocalInspectionMode.current,
-                            context = context,
-                            currentUserId = currentUserId,
-                        )
                     }
                 }
             }
@@ -325,7 +322,7 @@ private fun HomeScreen(
 }
 
 @Composable
-internal fun HomeFeedStatusPanel(
+private fun HomeFeedStatusPanel(
     uiState: HomeFeedUiState,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -341,21 +338,11 @@ internal fun HomeFeedStatusPanel(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = when (uiState.availabilityMode) {
-                    HomeFeedAvailabilityMode.REFRESHING_FROM_OFFLINE ->
-                        stringResource(R.string.home_offline_refreshing_title)
-
-                    else -> stringResource(R.string.home_offline_banner_title)
-                },
+                text = stringResource(R.string.home_offline_banner_title),
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = when (uiState.availabilityMode) {
-                    HomeFeedAvailabilityMode.REFRESHING_FROM_OFFLINE ->
-                        stringResource(R.string.home_offline_refreshing_message)
-
-                    else -> stringResource(R.string.home_offline_banner_message)
-                },
+                text = stringResource(R.string.home_offline_banner_message),
                 style = MaterialTheme.typography.bodyMedium,
             )
             uiState.lastSuccessfulSyncAt?.let { lastSync ->
@@ -416,27 +403,32 @@ private fun SnapshotCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SubcomposeAsyncImage(
-                    model = avatarImageModel,
-                    contentDescription = stringResource(R.string.home_description_profile_user_photo),
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(MaterialTheme.shapes.extraLarge),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        ShimmerPlaceholder(
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    },
-                    error = {
-                        Image(
-                            painter = imageError,
-                            contentDescription = stringResource(R.string.home_description_profile_user_photo),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                    },
-                )
+                if (avatarImageModel == null) {
+                    AvatarPlaceholder(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(MaterialTheme.shapes.extraLarge),
+                    )
+                } else {
+                    SubcomposeAsyncImage(
+                        model = avatarImageModel,
+                        contentDescription = stringResource(R.string.home_description_profile_user_photo),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(MaterialTheme.shapes.extraLarge),
+                        contentScale = ContentScale.Crop,
+                        loading = {
+                            ShimmerPlaceholder(
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        },
+                        error = {
+                            AvatarPlaceholder(
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        },
+                    )
+                }
                 Spacer(modifier = Modifier.size(8.dp))
                 Column(
                     modifier = Modifier.weight(1f),
@@ -555,6 +547,24 @@ private fun SnapshotCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AvatarPlaceholder(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.extraLarge,
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_person),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -711,7 +721,7 @@ private fun ExpandedImageViewer(
 }
 
 @Composable
-internal fun OfflineEmptyState(
+private fun OfflineEmptyState(
     modifier: Modifier = Modifier,
     onRetry: () -> Unit,
 ) {
@@ -796,19 +806,6 @@ private fun ErrorState(
     }
 }
 
-private fun computeLikeCount(
-    currentLikeCount: String,
-    currentlyLiked: Boolean,
-    newLikeState: Boolean,
-): Int {
-    val parsedCount = currentLikeCount.toIntOrNull() ?: 0
-    return when {
-        currentlyLiked == newLikeState -> parsedCount
-        newLikeState -> parsedCount + 1
-        else -> (parsedCount - 1).coerceAtLeast(0)
-    }
-}
-
 private fun clampOffset(
     offset: Offset,
     scale: Float,
@@ -827,11 +824,6 @@ private fun clampOffset(
 
 private fun formatOfflineSyncTime(timestamp: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(timestamp))
-
-private data class SnapshotLikeState(
-    val isLiked: Boolean,
-    val likeCount: Int,
-)
 
 private data class ExpandedImageState(
     val imageModel: Any,

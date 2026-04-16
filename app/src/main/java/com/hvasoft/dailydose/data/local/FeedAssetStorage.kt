@@ -23,8 +23,10 @@ class FeedAssetStorage @Inject constructor(
         assetType: OfflineMediaAssetType,
         sourceUrl: String,
         referencedAt: Long,
+        existingAsset: OfflineMediaAssetEntity? = null,
     ): OfflineMediaAssetEntity = withContext(dispatcherIO) {
         if (sourceUrl.isBlank()) {
+            existingAsset?.localPath?.let(::File)?.takeIf(File::exists)?.delete()
             return@withContext OfflineMediaAssetEntity(
                 assetId = assetId,
                 accountId = accountId,
@@ -38,17 +40,37 @@ class FeedAssetStorage @Inject constructor(
             )
         }
 
+        existingAsset
+            ?.takeIf { it.sourceUrl == sourceUrl }
+            ?.let(::reuseReadyAssetOrNull)
+            ?.let { reusableAsset ->
+                return@withContext reusableAsset.copy(lastReferencedAt = referencedAt)
+            }
+
         val accountDir = File(File(context.filesDir, ROOT_DIRECTORY_NAME), accountId).apply {
             mkdirs()
         }
         val assetFile = File(accountDir, buildFileName(assetId, sourceUrl))
+        val tempAssetFile = File(accountDir, "${assetFile.name}.download")
 
         try {
             URL(sourceUrl).openStream().use { input ->
-                FileOutputStream(assetFile).use { output ->
+                FileOutputStream(tempAssetFile).use { output ->
                     input.copyTo(output)
                 }
             }
+
+            if (assetFile.exists()) {
+                assetFile.delete()
+            }
+            tempAssetFile.copyTo(assetFile, overwrite = true)
+            tempAssetFile.delete()
+
+            existingAsset?.localPath
+                ?.takeIf { it != assetFile.absolutePath }
+                ?.let(::File)
+                ?.takeIf(File::exists)
+                ?.delete()
 
             OfflineMediaAssetEntity(
                 assetId = assetId,
@@ -62,8 +84,11 @@ class FeedAssetStorage @Inject constructor(
                 lastReferencedAt = referencedAt,
             )
         } catch (_: Exception) {
-            assetFile.delete()
+            tempAssetFile.delete()
             logger.warning("Failed to retain offline asset $assetId for account $accountId")
+            existingAsset?.let(::reuseReadyAssetOrNull)?.let { reusableAsset ->
+                return@withContext reusableAsset.copy(lastReferencedAt = referencedAt)
+            }
             OfflineMediaAssetEntity(
                 assetId = assetId,
                 accountId = accountId,
@@ -103,6 +128,18 @@ class FeedAssetStorage @Inject constructor(
             .takeIf { it.matches("[a-zA-Z0-9]{1,5}".toRegex()) }
             ?: "img"
         return "$safeAssetId.$extension"
+    }
+
+    private fun reuseReadyAssetOrNull(asset: OfflineMediaAssetEntity): OfflineMediaAssetEntity? {
+        val localPath = asset.localPath ?: return null
+        val localFile = File(localPath)
+        if (localFile.exists().not()) return null
+
+        return asset.copy(
+            localPath = localFile.absolutePath,
+            downloadStatus = OfflineMediaDownloadStatus.READY,
+            byteSize = localFile.length(),
+        )
     }
 
     private companion object {

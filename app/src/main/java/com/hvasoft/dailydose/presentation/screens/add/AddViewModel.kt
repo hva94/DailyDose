@@ -4,7 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hvasoft.dailydose.domain.interactor.add.CreateSnapshotUseCase
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,16 +28,16 @@ class AddViewModel @Inject constructor(
                 onProgress = { percent -> _uiState.value = AddPostUiState.Uploading(percent) },
             )
             _uiState.value = when (outcome) {
-                PostSnapshotOutcome.SUCCESS -> AddPostUiState.Success
-                PostSnapshotOutcome.IMAGE_UPLOAD_FAILED -> AddPostUiState.FailedImage
-                PostSnapshotOutcome.SAVE_FAILED -> AddPostUiState.FailedSave
+                is CreateSnapshotResult.Success -> AddPostUiState.Success(outcome.snapshot)
+                CreateSnapshotResult.ImageUploadFailed -> AddPostUiState.FailedImage
+                CreateSnapshotResult.SaveFailed -> AddPostUiState.FailedSave
             }
         }
     }
 
     fun acknowledgeTerminalState() {
         when (_uiState.value) {
-            AddPostUiState.Success,
+            is AddPostUiState.Success,
             AddPostUiState.FailedImage,
             AddPostUiState.FailedSave,
             -> _uiState.value = AddPostUiState.Idle

@@ -13,11 +13,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -50,8 +48,9 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.hvasoft.dailydose.R
-import com.hvasoft.dailydose.presentation.screens.common.calculateClampedAspectRatio
+import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.presentation.screens.common.DefaultImageAspectRatio
+import com.hvasoft.dailydose.presentation.screens.common.calculateClampedAspectRatio
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
 import java.io.File
 import java.text.SimpleDateFormat
@@ -63,10 +62,9 @@ private const val AddFileProviderAuthority = "com.hvasoft.fileprovider"
 @Composable
 fun AddRoute(
     viewModel: AddViewModel,
-    refreshSignal: Int,
     modifier: Modifier = Modifier,
     onShowMessage: (Int) -> Unit,
-    onSnapshotPosted: () -> Unit,
+    onSnapshotPosted: (Snapshot) -> Unit,
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -95,23 +93,22 @@ fun AddRoute(
             }
         }
 
-    LaunchedEffect(refreshSignal) {
-        if (refreshSignal == 0) return@LaunchedEffect
-        titleErrorRes = null
-    }
-
     LaunchedEffect(uiState) {
-        when (uiState) {
+        when (val state = uiState) {
             AddPostUiState.Idle -> Unit
 
             is AddPostUiState.Uploading -> Unit
 
-            AddPostUiState.Success -> {
+            is AddPostUiState.Success -> {
                 selectedImageUri = null
                 title = ""
                 titleErrorRes = null
                 onShowMessage(R.string.post_message_post_success)
-                onSnapshotPosted()
+                runCatching {
+                    onSnapshotPosted(state.snapshot)
+                }.onFailure {
+                    onShowMessage(R.string.error_unknown)
+                }
                 viewModel.acknowledgeTerminalState()
             }
 
@@ -196,10 +193,9 @@ fun AddScreenContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(all = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
         if (isUploading) {
             LinearProgressIndicator(
                 progress = { uploadProgress / 100f },

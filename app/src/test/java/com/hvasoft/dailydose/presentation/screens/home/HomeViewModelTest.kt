@@ -6,6 +6,7 @@ import com.google.firebase.auth.FirebaseUser
 import com.hvasoft.dailydose.MainDispatcherRule
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
+import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
@@ -18,11 +19,13 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -44,6 +47,7 @@ class HomeViewModelTest {
     private lateinit var authSessionProvider: FakeAuthSessionProvider
     private lateinit var viewModel: HomeViewModel
     private var refreshCallCount = 0
+    private var refreshDelayMs = 0L
 
     @Before
     fun setUp() {
@@ -71,11 +75,15 @@ class HomeViewModelTest {
                 override fun observeSyncState(): kotlinx.coroutines.flow.Flow<HomeFeedSyncState> = syncStateFlow
 
                 override suspend fun refresh(): Result<Unit> {
+                    delay(refreshDelayMs)
                     refreshCallCount += 1
                     return refreshResult
                 }
 
                 override suspend fun clearOfflineSnapshots(accountId: String) = Unit
+            },
+            cachePostedSnapshotUseCase = object : CachePostedSnapshotUseCase {
+                override suspend fun invoke(snapshot: Snapshot) = Unit
             },
             toggleUserLikeUseCase = toggleUserLikeUseCase,
             deleteSnapshotUseCase = deleteSnapshotUseCase,
@@ -129,5 +137,119 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertThat(refreshCallCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `uiState stays full access while an online refresh is in flight`() = runTest {
+        syncStateFlow.value = HomeFeedSyncState(
+            availabilityMode = HomeFeedAvailabilityMode.ONLINE_FRESH,
+            lastSuccessfulSyncAt = 1_000L,
+            lastRefreshResult = HomeFeedLastRefreshResult.SUCCESS,
+            hasRetainedContent = true,
+            retainedItemCount = 3,
+        )
+        val collector = backgroundScope.launch {
+            viewModel.uiState.collect { }
+        }
+
+        viewModel.retrySync()
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.actionPolicy).isEqualTo(HomeFeedActionPolicy.FULL_ACCESS)
+        collector.cancel()
+    }
+
+    @Test
+    fun `shouldAutoRefreshOnResume returns true only when the last successful sync is stale`() = runTest {
+        syncStateFlow.value = HomeFeedSyncState(
+            availabilityMode = HomeFeedAvailabilityMode.ONLINE_FRESH,
+            lastSuccessfulSyncAt = 1_000L,
+            lastRefreshResult = HomeFeedLastRefreshResult.SUCCESS,
+            hasRetainedContent = true,
+        )
+        val collector = backgroundScope.launch {
+            viewModel.uiState.collect { }
+        }
+        advanceUntilIdle()
+
+        assertThat(viewModel.shouldAutoRefreshOnResume(nowMillis = 1_000L + 600_001L)).isTrue()
+        assertThat(viewModel.shouldAutoRefreshOnResume(nowMillis = 1_000L + 60_000L)).isFalse()
+        collector.cancel()
+    }
+
+    @Test
+    fun `auto refresh keeps the pull indicator hidden before the visibility threshold`() = runTest {
+        refreshDelayMs = 900L
+        syncStateFlow.value = HomeFeedSyncState(
+            availabilityMode = HomeFeedAvailabilityMode.ONLINE_FRESH,
+            lastSuccessfulSyncAt = 1_000L,
+            lastRefreshResult = HomeFeedLastRefreshResult.SUCCESS,
+            hasRetainedContent = true,
+            retainedItemCount = 3,
+        )
+        val collector = backgroundScope.launch {
+            viewModel.uiState.collect { }
+        }
+        advanceUntilIdle()
+
+        viewModel.fetchSnapshots(reloadSource = false)
+        advanceTimeBy(500L)
+
+        assertThat(viewModel.uiState.value.isBackgroundRefreshing).isTrue()
+        assertThat(viewModel.uiState.value.showsRefreshIndicator).isFalse()
+
+        advanceUntilIdle()
+        collector.cancel()
+    }
+
+    @Test
+    fun `auto refresh shows the pull indicator when the refresh exceeds the threshold`() = runTest {
+        refreshDelayMs = 1_500L
+        syncStateFlow.value = HomeFeedSyncState(
+            availabilityMode = HomeFeedAvailabilityMode.ONLINE_FRESH,
+            lastSuccessfulSyncAt = 1_000L,
+            lastRefreshResult = HomeFeedLastRefreshResult.SUCCESS,
+            hasRetainedContent = true,
+            retainedItemCount = 3,
+        )
+        val collector = backgroundScope.launch {
+            viewModel.uiState.collect { }
+        }
+        advanceUntilIdle()
+
+        viewModel.fetchSnapshots(reloadSource = false)
+        advanceTimeBy(1_001L)
+
+        assertThat(viewModel.uiState.value.isBackgroundRefreshing).isTrue()
+        assertThat(viewModel.uiState.value.showsRefreshIndicator).isTrue()
+
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.showsRefreshIndicator).isFalse()
+        collector.cancel()
+    }
+
+    @Test
+    fun `manual refresh shows the pull indicator immediately`() = runTest {
+        refreshDelayMs = 1_500L
+        syncStateFlow.value = HomeFeedSyncState(
+            availabilityMode = HomeFeedAvailabilityMode.ONLINE_FRESH,
+            lastSuccessfulSyncAt = 1_000L,
+            lastRefreshResult = HomeFeedLastRefreshResult.SUCCESS,
+            hasRetainedContent = true,
+            retainedItemCount = 3,
+        )
+        val collector = backgroundScope.launch {
+            viewModel.uiState.collect { }
+        }
+        advanceUntilIdle()
+
+        viewModel.retrySync()
+        advanceTimeBy(1L)
+
+        assertThat(viewModel.uiState.value.isBackgroundRefreshing).isTrue()
+        assertThat(viewModel.uiState.value.showsRefreshIndicator).isTrue()
+
+        advanceUntilIdle()
+        collector.cancel()
     }
 }

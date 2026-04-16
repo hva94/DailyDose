@@ -11,7 +11,8 @@ interface HomeRepository {
     fun observeSyncState(): Flow<HomeFeedSyncState>
     suspend fun refreshSnapshots(): Result<Unit>
     suspend fun clearOfflineSnapshots(accountId: String)
-    suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean) : Int
+    suspend fun cachePostedSnapshot(snapshot: Snapshot)
+    suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int
     suspend fun deleteSnapshot(snapshot: Snapshot): Int
 
 }

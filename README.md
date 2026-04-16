@@ -18,29 +18,29 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
-## 1.2.0
-- Full presentation layer migration from Fragments/XML/ViewBinding to **Jetpack Compose**.
-- `HostActivity` now runs a Compose-first app shell with top-level Home/Add/Profile navigation, snackbar handling, and preserved FirebaseUI auth plus Remote Config update flows.
-- Home, Add, and Profile screens were rewritten in Compose, keeping the existing product behavior for posting, liking, deleting, sharing, editing profile data, upload progress, and sign-out.
-- Legacy presentation code was removed, including old fragments, XML screen layouts, bottom navigation resources, RecyclerView adapter code, and other View-era helpers.
-- Image loading moved to **Coil**, paging moved into the Compose UI flow, and the old Home image zoom behavior was intentionally removed during the migration.
-- Added **offline support for the Home feed** with a local-first architecture using **Room** plus app-private retained media files.
-- The app now keeps a bounded per-user cache of recent Home feed items and their image previews, so previously synced content can still be browsed offline.
-- Offline v1 is intentionally read-only for remote mutations: like/delete are blocked offline, while sharing remains available when a retained image exists locally.
-- Startup auth handling was hardened with a session-based approach to avoid crashes caused by eagerly reading the signed-in user before Firebase auth is ready.
-- Share behavior on Home was improved so supported targets receive an actual image attachment from a cache-backed `content://` URI instead of a raw file route/path.
-- Test coverage was expanded across the Compose presentation layer, offline feed behavior, startup-safe auth handling, and sharing/offline regression paths.
+## 1.2.1
+- Home refresh is now more stable and local-first, so cached content stays visible while sync runs in the background.
+- Posting, deleting, and liking now update the Home feed immediately for a faster and smoother feel.
+- Sync performance was improved by skipping unnecessary rewrites and re-downloads when feed data has not changed.
+- Profile offline support was improved with better fallback for name, email, and cached avatar data.
+- Home and Profile image/cache behavior was cleaned up to make offline states more consistent.
+- Test coverage was expanded for refresh, offline behavior, and cache-related regressions.
+
+## 1.2.0 - Version 3 release.
+- The app was fully migrated from Fragments/XML to **Jetpack Compose**.
+- Home, Add, and Profile were rebuilt in Compose while keeping the main app behavior intact.
+- Home gained offline support with a local-first cache using **Room** and retained media files.
+- Sharing, auth startup, and general app stability were improved during the migration.
+- Test coverage was expanded for the new Compose and offline flows.
 
 ## 1.1.5
-- Add Snapshot flow moved behind clean architecture: `AddSnapshotRepository`, `CreateSnapshotUseCase`, and `PostSnapshotOutcome` for upload vs. save failures with progress reporting.
-- Profile screen logic moved into `ProfileViewModel` with domain use cases (`GetUserProfileUseCase`, `UpdateProfileNameUseCase`, `UploadProfilePhotoUseCase`) backed by `ProfileRepository` and `UserProfile`.
-- `RemoteDatabaseService` extended with `publishSnapshot` implemented in `RemoteDatabaseServiceImpl` (Storage upload + Realtime Database write).
-- Add screen UI state modeled as `AddPostUiState` (idle, uploading with percent, success, and failure variants).
-- Dagger modules updated to bind the new repositories and interactors.
-- Unit tests added for home-domain interactors: delete snapshot, get snapshots, and toggle like.
-- Architecture specification pack added under `specs/001-clean-layered-architecture/` (overview, plan, tasks, contracts, and contributor docs).
+- The Add Snapshot flow was moved into clean architecture with dedicated repository and use case layers.
+- Profile logic was also moved into a ViewModel and domain/use case structure.
+- Remote publishing and upload progress handling were improved and made more explicit.
+- Dependency injection and unit tests were expanded to support the new architecture.
+- A new architecture spec pack was added under `specs/001-clean-layered-architecture/`.
 
-## 1.1.4
+## 1.1.4 - Version 2 release.
 - App versioning and dependencies updated.
 - SDK versions updated (compileSdk 36, targetSdk 36).
 - In-app update system implemented using Firebase Remote Config and DownloadManager.
@@ -52,7 +52,7 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - Firebase Hosting configuration and landing page added.
 - Code style and project structure settings updated.
 
-## 1.1.2
+## 1.1.2 - Version 1 release.
 - Master versioning started.
 - Dark/Light mode handling.
 - Like button updated.

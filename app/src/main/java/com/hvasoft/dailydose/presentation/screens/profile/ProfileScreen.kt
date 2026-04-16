@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -51,11 +50,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.firebase.ui.auth.AuthUI
 import com.hvasoft.dailydose.BuildConfig
 import com.hvasoft.dailydose.R
+import com.hvasoft.dailydose.domain.model.UserProfile
 import com.hvasoft.dailydose.presentation.screens.common.ShimmerPlaceholder
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
 import java.io.File
@@ -72,16 +71,29 @@ fun ProfileRoute(
 ) {
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val profileUiState by viewModel.profileUiState.collectAsStateWithLifecycle()
     val uploadProgress by viewModel.uploadProgress.collectAsStateWithLifecycle()
-    var displayName by rememberSaveable { mutableStateOf("") }
     var nameFieldValue by rememberSaveable { mutableStateOf("") }
-    var email by rememberSaveable { mutableStateOf("") }
-    var photoUrl by rememberSaveable { mutableStateOf("") }
-    var isEditingName by rememberSaveable { mutableStateOf(true) }
+    var isEditingName by rememberSaveable { mutableStateOf(false) }
     var showImageSourceDialog by rememberSaveable { mutableStateOf(false) }
     var showLogoutDialog by rememberSaveable { mutableStateOf(false) }
     var pendingCameraUri by rememberSaveable { mutableStateOf<String?>(null) }
     var nameErrorRes by remember { mutableStateOf<Int?>(null) }
+    val profile = profileUiState.profile
+    val displayName = profile?.displayName.orEmpty()
+    val email = profile?.email.orEmpty()
+    val photoUrl = profile?.photoUrl.orEmpty()
+    val localPhotoPath = profile?.localPhotoPath
+    val authPhotoUrl = profileUiState.authPhotoUrl
+    val canEditProfile = profile?.isOfflineFallback?.not() ?: false
+
+    LaunchedEffect(displayName, canEditProfile) {
+        nameFieldValue = displayName
+        isEditingName = canEditProfile && displayName.isBlank()
+        if (!canEditProfile) {
+            nameErrorRes = null
+        }
+    }
 
     val photoPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -108,17 +120,9 @@ fun ProfileRoute(
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
-                is ProfileViewModel.Event.ProfileLoaded -> {
-                    displayName = event.displayName
-                    nameFieldValue = event.displayName
-                    isEditingName = event.displayName.isBlank()
-                    photoUrl = event.photoUrl
-                    email = event.email
-                }
+                is ProfileViewModel.Event.ProfileLoaded -> Unit
 
                 is ProfileViewModel.Event.NameUpdated -> {
-                    displayName = event.displayName
-                    nameFieldValue = event.displayName
                     isEditingName = false
                     nameErrorRes = null
                     keyboardController?.hide()
@@ -126,7 +130,6 @@ fun ProfileRoute(
                 }
 
                 is ProfileViewModel.Event.PhotoUpdated -> {
-                    photoUrl = event.photoUrl
                     onShowMessage(R.string.profile_user_image_updated)
                 }
 
@@ -173,11 +176,8 @@ fun ProfileRoute(
                                 R.string.profile_logout_success,
                                 Toast.LENGTH_SHORT,
                             ).show()
-                            displayName = ""
                             nameFieldValue = ""
-                            email = ""
-                            photoUrl = ""
-                            isEditingName = true
+                            isEditingName = false
                             onSignedOut()
                         }
                     },
@@ -199,6 +199,9 @@ fun ProfileRoute(
         nameFieldValue = nameFieldValue,
         email = email,
         photoUrl = photoUrl,
+        localPhotoPath = localPhotoPath,
+        authPhotoUrl = authPhotoUrl,
+        canEditProfile = canEditProfile,
         isEditingName = isEditingName,
         uploadProgress = uploadProgress,
         nameErrorRes = nameErrorRes,
@@ -210,7 +213,7 @@ fun ProfileRoute(
         onEditName = { isEditingName = true },
         onCancelName = {
             nameFieldValue = displayName
-            isEditingName = displayName.isBlank()
+            isEditingName = canEditProfile && displayName.isBlank()
             nameErrorRes = null
             keyboardController?.hide()
         },
@@ -236,6 +239,9 @@ private fun ProfileScreen(
     nameFieldValue: String,
     email: String,
     photoUrl: String,
+    localPhotoPath: String?,
+    authPhotoUrl: String,
+    canEditProfile: Boolean,
     isEditingName: Boolean,
     uploadProgress: Int?,
     nameErrorRes: Int?,
@@ -248,15 +254,22 @@ private fun ProfileScreen(
     onSaveName: () -> Unit,
     onLogout: () -> Unit,
 ) {
+    val photoModel = UserProfile(
+        userId = "",
+        displayName = displayName,
+        photoUrl = photoUrl,
+        localPhotoPath = localPhotoPath,
+        email = email,
+    ).preferredPhotoModel(authPhotoUrl)
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(all = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
         if (uploadProgress != null) {
             CircularProgressIndicator(progress = { uploadProgress / 100f })
         }
@@ -266,26 +279,23 @@ private fun ProfileScreen(
                 .size(360.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(onClick = onSelectImage),
+                .clickable(
+                    enabled = canEditProfile,
+                    onClick = onSelectImage,
+                ),
             contentAlignment = Alignment.Center,
         ) {
-            if (photoUrl.isBlank()) {
-                Image(
-                    painter = painterResource(R.drawable.ic_image_search_profile),
-                    contentDescription = stringResource(R.string.add_button_select),
-                    modifier = Modifier.size(96.dp),
+            if (photoModel == null) {
+                ProfileAvatarPlaceholder(
+                    modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                AsyncImage(
-                    model = photoUrl,
-                    contentDescription = stringResource(R.string.add_button_select),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
                 SubcomposeAsyncImage(
-                    model = photoUrl,
+                    model = photoModel,
                     contentDescription = stringResource(R.string.add_button_select),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
                     contentScale = ContentScale.Crop,
                     loading = {
                         ShimmerPlaceholder(
@@ -293,11 +303,8 @@ private fun ProfileScreen(
                         )
                     },
                     error = {
-                        Image(
-                            painter = painterResource(R.drawable.image_error),
-                            contentDescription = stringResource(R.string.home_description_profile_user_photo),
+                        ProfileAvatarPlaceholder(
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
                         )
                     },
                 )
@@ -307,7 +314,7 @@ private fun ProfileScreen(
             text = displayName,
             style = MaterialTheme.typography.headlineMedium,
         )
-        if (isEditingName) {
+        if (isEditingName && canEditProfile) {
             OutlinedTextField(
                 value = nameFieldValue,
                 onValueChange = onNameChange,
@@ -335,7 +342,7 @@ private fun ProfileScreen(
                     )
                 }
             }
-        } else {
+        } else if (canEditProfile) {
             Button(onClick = onEditName) {
                 Text(
                     text = stringResource(R.string.profile_button_edit_name),
@@ -358,6 +365,24 @@ private fun ProfileScreen(
             text = versionLabel,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ProfileAvatarPlaceholder(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = CircleShape,
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_person),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(96.dp),
         )
     }
 }
@@ -400,6 +425,9 @@ private fun ProfileScreenPreview() {
             nameFieldValue = "Henry Vazquez",
             email = "henry@example.com",
             photoUrl = "",
+            localPhotoPath = null,
+            authPhotoUrl = "",
+            canEditProfile = true,
             isEditingName = false,
             uploadProgress = null,
             nameErrorRes = null,

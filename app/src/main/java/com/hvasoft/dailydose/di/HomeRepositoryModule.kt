@@ -11,9 +11,12 @@ import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.local.DailyDoseDatabase
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
+import com.hvasoft.dailydose.data.local.HomeFeedTransactionRunner
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
 import com.hvasoft.dailydose.data.local.OfflineFeedMapper
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
+import com.hvasoft.dailydose.data.local.ProfileLocalCache
+import com.hvasoft.dailydose.data.local.RoomHomeFeedTransactionRunner
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseServiceImpl
 import com.hvasoft.dailydose.data.repository.HomeFeedRefreshCoordinator
@@ -63,17 +66,21 @@ object HomeRepositoryModule {
     fun providesHomeRepository(
         remoteDatabaseService: RemoteDatabaseService,
         offlineFeedItemDao: OfflineFeedItemDao,
+        offlineMediaAssetDao: OfflineMediaAssetDao,
         feedSyncStateDao: FeedSyncStateDao,
         offlineFeedMapper: OfflineFeedMapper,
         refreshCoordinator: HomeFeedRefreshCoordinator,
         authSessionProvider: AuthSessionProvider,
+        feedAssetStorage: FeedAssetStorage,
     ): HomeRepository = HomeRepositoryImpl(
         remoteDatabaseService = remoteDatabaseService,
         offlineFeedItemDao = offlineFeedItemDao,
+        offlineMediaAssetDao = offlineMediaAssetDao,
         feedSyncStateDao = feedSyncStateDao,
         offlineFeedMapper = offlineFeedMapper,
         refreshCoordinator = refreshCoordinator,
         authSessionProvider = authSessionProvider,
+        feedAssetStorage = feedAssetStorage,
     )
 
     @Provides
@@ -153,19 +160,29 @@ object HomeRepositoryModule {
 
     @Provides
     @Singleton
+    fun providesHomeFeedTransactionRunner(
+        database: DailyDoseDatabase,
+    ): HomeFeedTransactionRunner = RoomHomeFeedTransactionRunner(database)
+
+    @Provides
+    @Singleton
     fun providesHomeFeedRefreshCoordinator(
         remoteDatabaseService: RemoteDatabaseService,
+        transactionRunner: HomeFeedTransactionRunner,
         offlineFeedItemDao: OfflineFeedItemDao,
         offlineMediaAssetDao: OfflineMediaAssetDao,
         feedSyncStateDao: FeedSyncStateDao,
         feedAssetStorage: FeedAssetStorage,
+        profileLocalCache: ProfileLocalCache,
         @DispatcherIO dispatcherIO: kotlinx.coroutines.CoroutineDispatcher,
     ): HomeFeedRefreshCoordinator = HomeFeedRefreshCoordinator(
         remoteDatabaseService = remoteDatabaseService,
+        transactionRunner = transactionRunner,
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
         feedSyncStateDao = feedSyncStateDao,
         feedAssetStorage = feedAssetStorage,
+        profileLocalCache = profileLocalCache,
         dispatcherIO = dispatcherIO,
     )
 }

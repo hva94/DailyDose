@@ -2,6 +2,8 @@ package com.hvasoft.dailydose.di
 
 import com.hvasoft.dailydose.domain.interactor.add.CreateSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.add.CreateSnapshotUseCaseImpl
+import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
+import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
@@ -40,6 +42,11 @@ object InteractionModule {
     fun provideDeleteSnapshotUseCase(
         homeRepository: HomeRepository,
     ): DeleteSnapshotUseCase = DeleteSnapshotUseCaseImpl(homeRepository)
+
+    @Provides
+    fun provideCachePostedSnapshotUseCase(
+        homeRepository: HomeRepository,
+    ): CachePostedSnapshotUseCase = CachePostedSnapshotUseCaseImpl(homeRepository)
 
     @Provides
     fun provideCreateSnapshotUseCase(

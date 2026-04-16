@@ -5,7 +5,7 @@ import com.google.common.truth.Truth.assertThat
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.Snapshot
 import io.mockk.every
 import io.mockk.mockk
@@ -51,7 +51,7 @@ class RemoteDatabaseServiceImplTest {
             onProgress = {},
         )
 
-        assertThat(result).isEqualTo(PostSnapshotOutcome.SAVE_FAILED)
+        assertThat(result).isEqualTo(CreateSnapshotResult.SaveFailed)
     }
 
     @Test

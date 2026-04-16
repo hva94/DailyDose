@@ -9,8 +9,10 @@ import com.hvasoft.dailydose.data.local.OfflineFeedItemEntity
 import com.hvasoft.dailydose.data.local.OfflineFeedItemWithAssets
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
+import com.hvasoft.dailydose.data.local.OfflineOwnerProfileCache
+import com.hvasoft.dailydose.data.network.model.User
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
-import com.hvasoft.dailydose.domain.model.PostSnapshotOutcome
+import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.Snapshot
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,10 +25,59 @@ internal class FakeOfflineFeedItemDao : OfflineFeedItemDao {
     override fun pagingSource(accountId: String): PagingSource<Int, OfflineFeedItemWithAssets> =
         StaticPagingSource(projections[accountId].orEmpty())
 
+    override suspend fun getByAccount(accountId: String): List<OfflineFeedItemEntity> =
+        storedItems.filter { it.accountId == accountId }.sortedBy { it.sortOrder }
+
+    override suspend fun getBySnapshotId(accountId: String, snapshotId: String): OfflineFeedItemEntity? =
+        storedItems.firstOrNull { it.accountId == accountId && it.snapshotId == snapshotId }
+
     override suspend fun upsertAll(items: List<OfflineFeedItemEntity>) {
-        val accountId = items.firstOrNull()?.accountId ?: return
-        storedItems.removeAll { it.accountId == accountId }
-        storedItems += items
+        items.forEach { newItem ->
+            storedItems.removeAll {
+                it.accountId == newItem.accountId && it.snapshotId == newItem.snapshotId
+            }
+            storedItems += newItem
+        }
+    }
+
+    override suspend fun incrementSortOrders(accountId: String) {
+        val updatedItems = storedItems.map { item ->
+            if (item.accountId == accountId) item.copy(sortOrder = item.sortOrder + 1) else item
+        }
+        storedItems.clear()
+        storedItems += updatedItems
+    }
+
+    override suspend fun updateLikeState(
+        accountId: String,
+        snapshotId: String,
+        likeCount: Int,
+        likedByCurrentUser: Boolean,
+    ) {
+        val updatedItems = storedItems.map { item ->
+            if (item.accountId == accountId && item.snapshotId == snapshotId) {
+                item.copy(
+                    likeCount = likeCount,
+                    likedByCurrentUser = likedByCurrentUser,
+                )
+            } else {
+                item
+            }
+        }
+        storedItems.clear()
+        storedItems += updatedItems
+    }
+
+    override suspend fun deleteBySnapshotId(accountId: String, snapshotId: String) {
+        storedItems.removeAll { it.accountId == accountId && it.snapshotId == snapshotId }
+    }
+
+    override suspend fun deleteBySnapshotIds(accountId: String, snapshotIds: List<String>) {
+        storedItems.removeAll { it.accountId == accountId && it.snapshotId in snapshotIds }
+    }
+
+    override suspend fun deleteMissingSnapshots(accountId: String, snapshotIds: List<String>) {
+        storedItems.removeAll { it.accountId == accountId && it.snapshotId !in snapshotIds }
     }
 
     override suspend fun deleteByAccount(accountId: String) {
@@ -36,6 +87,33 @@ internal class FakeOfflineFeedItemDao : OfflineFeedItemDao {
 
     override suspend fun countByAccount(accountId: String): Int =
         storedItems.count { it.accountId == accountId }
+
+    override suspend fun countAssetReferences(accountId: String, assetId: String): Int =
+        storedItems.count { item ->
+            item.accountId == accountId &&
+                (item.mainImageAssetId == assetId || item.ownerAvatarAssetId == assetId)
+        }
+
+    override suspend fun getLatestOwnerProfile(
+        accountId: String,
+        ownerUserId: String,
+    ): OfflineOwnerProfileCache? = storedItems
+        .filter { it.accountId == accountId && it.ownerUserId == ownerUserId }
+        .sortedWith(compareByDescending<OfflineFeedItemEntity> { it.syncedAt }.thenBy { it.sortOrder })
+        .firstOrNull()
+        ?.let { item ->
+            OfflineOwnerProfileCache(
+                ownerDisplayName = item.ownerDisplayName,
+                ownerAvatarRemoteUrl = item.ownerAvatarRemoteUrl,
+                ownerAvatarAssetId = item.ownerAvatarAssetId,
+                ownerAvatarLocalPath = null,
+            )
+        }
+
+    override suspend fun getLatestOwnerAvatarLocalPath(
+        accountId: String,
+        ownerUserId: String,
+    ): String? = null
 
     fun setPagingItems(accountId: String, items: List<OfflineFeedItemWithAssets>) {
         projections[accountId] = items
@@ -58,8 +136,19 @@ internal class FakeOfflineMediaAssetDao : OfflineMediaAssetDao {
     override suspend fun getByAccount(accountId: String): List<OfflineMediaAssetEntity> =
         storedAssets.filter { it.accountId == accountId }
 
+    override suspend fun getByIds(assetIds: List<String>): List<OfflineMediaAssetEntity> =
+        storedAssets.filter { it.assetId in assetIds }
+
     override suspend fun deleteByIds(assetIds: List<String>) {
         storedAssets.removeAll { it.assetId in assetIds }
+    }
+
+    override suspend fun deleteById(assetId: String) {
+        storedAssets.removeAll { it.assetId == assetId }
+    }
+
+    override suspend fun deleteMissingAssets(accountId: String, assetIds: List<String>) {
+        storedAssets.removeAll { it.accountId == accountId && it.assetId !in assetIds }
     }
 
     override suspend fun deleteByAccount(accountId: String) {
@@ -68,6 +157,7 @@ internal class FakeOfflineMediaAssetDao : OfflineMediaAssetDao {
 
     fun storedAssets(accountId: String): List<OfflineMediaAssetEntity> =
         storedAssets.filter { it.accountId == accountId }
+
 }
 
 internal class FakeFeedSyncStateDao : FeedSyncStateDao {
@@ -111,6 +201,14 @@ internal class FakeRemoteDatabaseService(
 
     override suspend fun getUserNameOnce(idUser: String?): String = namesByUserId[idUser].orEmpty()
 
+    override suspend fun getUsersOnce(userIds: Set<String>): Map<String, User> = userIds.associateWith { userId ->
+        User(
+            id = userId,
+            userName = namesByUserId[userId].orEmpty(),
+            photoUrl = avatarsByUserId[userId].orEmpty(),
+        )
+    }
+
     override suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int = 1
 
     override suspend fun deleteSnapshot(snapshot: Snapshot): Int = 1
@@ -119,7 +217,12 @@ internal class FakeRemoteDatabaseService(
         localImageContentUri: String,
         title: String,
         onProgress: (Int) -> Unit,
-    ): PostSnapshotOutcome = PostSnapshotOutcome.SUCCESS
+    ): CreateSnapshotResult = CreateSnapshotResult.Success(
+        Snapshot(
+            title = title,
+            snapshotKey = "snapshot-created",
+        ),
+    )
 }
 
 private class StaticPagingSource<T : Any>(
