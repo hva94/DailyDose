@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -76,7 +78,7 @@ fun AddRoute(
 
     val photoPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            if (uri != null) {
+            uri?.let {
                 selectedImageUri = uri.toString()
                 title = context.getString(R.string.add_default_title, currentTimeLabel())
                 titleErrorRes = null
@@ -194,13 +196,18 @@ fun AddScreenContent(
         modifier = modifier
             .fillMaxSize()
             .padding(all = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(
+            space = 16.dp,
+            alignment = Alignment.CenterVertically,
+        ),
     ) {
         if (isUploading) {
             LinearProgressIndicator(
                 progress = { uploadProgress / 100f },
                 modifier = Modifier.fillMaxWidth(),
             )
+        } else if (imageUri != null) {
+            Spacer(modifier = Modifier.height(4.dp))
         }
         Row(Modifier.fillMaxWidth()) {
             Text(
@@ -218,7 +225,7 @@ fun AddScreenContent(
                 )
             }
         }
-        if (imageUri != null) {
+        imageUri?.let {
             OutlinedTextField(
                 value = title,
                 onValueChange = onTitleChange,
@@ -227,7 +234,7 @@ fun AddScreenContent(
                 label = { Text(text = stringResource(R.string.add_hint_title)) },
                 isError = titleErrorRes != null,
                 supportingText = {
-                    if (titleErrorRes != null) {
+                    titleErrorRes?.let {
                         Text(text = stringResource(titleErrorRes))
                     }
                 },

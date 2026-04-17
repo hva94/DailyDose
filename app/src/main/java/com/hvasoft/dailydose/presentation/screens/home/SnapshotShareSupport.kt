@@ -79,7 +79,7 @@ internal suspend fun prepareShareableImageUri(
     fileUriProvider(context, shareFile)
 }
 
-internal fun buildShareSnapshotIntent(
+private fun buildShareSnapshotIntent(
     context: Context,
     imageUri: Uri,
     shareText: String,

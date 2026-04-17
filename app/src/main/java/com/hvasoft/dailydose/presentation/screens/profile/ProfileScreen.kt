@@ -97,7 +97,7 @@ fun ProfileRoute(
 
     val photoPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            if (uri != null) {
+            uri?.let {
                 viewModel.uploadCurrentProfilePhoto(
                     imageUri = uri,
                     currentUserName = nameFieldValue.trim().ifEmpty { displayName },
@@ -267,10 +267,13 @@ private fun ProfileScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(all = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(
+            space = 16.dp,
+            alignment = Alignment.CenterVertically,
+        ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (uploadProgress != null) {
+        uploadProgress?.let {
             CircularProgressIndicator(progress = { uploadProgress / 100f })
         }
         Box(
@@ -322,7 +325,7 @@ private fun ProfileScreen(
                 label = { Text(text = stringResource(R.string.profile_hint_name)) },
                 isError = nameErrorRes != null,
                 supportingText = {
-                    if (nameErrorRes != null) {
+                    nameErrorRes?.let {
                         Text(text = stringResource(nameErrorRes))
                     }
                 },
@@ -360,7 +363,6 @@ private fun ProfileScreen(
                 color = Color.White,
             )
         }
-        Spacer(modifier = Modifier.weight(1f))
         Text(
             text = versionLabel,
             style = MaterialTheme.typography.bodySmall,

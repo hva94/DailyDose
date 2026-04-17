@@ -179,7 +179,7 @@ fun HomeRoute(
         },
     )
 
-    if (pendingDeleteSnapshot != null) {
+    pendingDeleteSnapshot?.let {
         AlertDialog(
             onDismissRequest = { pendingDeleteSnapshot = null },
             title = { Text(text = stringResource(R.string.dialog_delete_title)) },
