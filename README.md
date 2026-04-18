@@ -18,7 +18,7 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
-## 1.3.0
+## 1.3.0 - Version 4 release.
 - Likes were replaced with emoji reactions, including add, switch, and remove actions from the Home feed.
 - Snapshot cards now show reaction summaries and reply counts, with a reply sheet for reading and posting in context.
 - Reactions and replies now support offline pending state and reconnect reconciliation.
