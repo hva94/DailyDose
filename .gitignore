@@ -3,6 +3,7 @@
 /captures
 .externalNativeBuild
 .cxx
+*.apk
 
 # Gradle
 .gradle

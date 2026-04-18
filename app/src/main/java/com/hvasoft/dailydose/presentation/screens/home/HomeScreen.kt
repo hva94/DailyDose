@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -67,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -115,6 +119,7 @@ fun HomeRoute(
     viewModel: HomeViewModel,
     scrollSignal: Int,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(),
     onShowMessage: (Int) -> Unit,
 ) {
     val pagingItems = viewModel.snapshots.collectAsLazyPagingItems()
@@ -159,6 +164,7 @@ fun HomeRoute(
         uiState = uiState,
         listState = listState,
         currentUserId = currentUserId,
+        contentPadding = contentPadding,
         modifier = modifier,
         onRetry = viewModel::retrySync,
         onRefresh = viewModel::retrySync,
@@ -253,6 +259,7 @@ private fun HomeScreen(
     listState: androidx.compose.foundation.lazy.LazyListState,
     currentUserId: String?,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(),
     onRetry: () -> Unit,
     onRefresh: () -> Unit,
     onReactionSelected: (Snapshot, String) -> Unit,
@@ -262,6 +269,7 @@ private fun HomeScreen(
     onRequestDelete: (Snapshot) -> Unit,
 ) {
     val context = LocalContext.current
+    val layoutDirection = LocalLayoutDirection.current
     val loadState = pagingItems.loadState.refresh
     val isInitialLoading = (loadState is LoadState.Loading && pagingItems.itemCount == 0) ||
         (uiState.isInitialLoadInProgress && pagingItems.itemCount == 0)
@@ -272,6 +280,12 @@ private fun HomeScreen(
     val isEmpty = loadState is LoadState.NotLoading &&
         pagingItems.itemCount == 0 &&
         isOfflineEmpty.not()
+    val listContentPadding = PaddingValues(
+        start = contentPadding.calculateStartPadding(layoutDirection) + 8.dp,
+        top = contentPadding.calculateTopPadding() + 8.dp,
+        end = contentPadding.calculateEndPadding(layoutDirection) + 8.dp,
+        bottom = contentPadding.calculateBottomPadding() + 8.dp,
+    )
 
     PullToRefreshBox(
         isRefreshing = uiState.showsRefreshIndicator,
@@ -284,27 +298,35 @@ private fun HomeScreen(
             when {
                 isInitialLoading -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(contentPadding),
                     )
                 }
 
                 isOfflineEmpty -> {
                     OfflineEmptyState(
-                        modifier = Modifier.align(Alignment.Center),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(contentPadding),
                         onRetry = onRetry,
                     )
                 }
 
                 isDatabaseError -> {
                     ErrorState(
-                        modifier = Modifier.align(Alignment.Center),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(contentPadding),
                         onRetry = onRetry,
                     )
                 }
 
                 isEmpty -> {
                     EmptyState(
-                        modifier = Modifier.align(Alignment.Center),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(contentPadding),
                     )
                 }
 
@@ -312,12 +334,7 @@ private fun HomeScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = 8.dp,
-                            top = 8.dp,
-                            end = 8.dp,
-                            bottom = 8.dp,
-                        ),
+                        contentPadding = listContentPadding,
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         if (uiState.showsOfflineMessaging) {
@@ -752,7 +769,6 @@ private fun SnapshotReplySheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.9f)
-                .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1046,6 +1062,7 @@ private fun ExpandedImageViewer(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
             dismissOnClickOutside = true,
         ),
     ) {
@@ -1112,6 +1129,7 @@ private fun ExpandedImageViewer(
                 onClick = onDismiss,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
+                    .statusBarsPadding()
                     .padding(16.dp),
             ) {
                 Text(
@@ -1123,6 +1141,7 @@ private fun ExpandedImageViewer(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
                     .padding(horizontal = 24.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {

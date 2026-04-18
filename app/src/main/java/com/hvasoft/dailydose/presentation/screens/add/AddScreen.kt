@@ -12,14 +12,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
@@ -65,6 +70,7 @@ private const val AddFileProviderAuthority = "com.hvasoft.fileprovider"
 fun AddRoute(
     viewModel: AddViewModel,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(),
     onShowMessage: (Int) -> Unit,
     onSnapshotPosted: (Snapshot) -> Unit,
 ) {
@@ -146,6 +152,7 @@ fun AddRoute(
 
     AddScreenContent(
         modifier = modifier,
+        contentPadding = contentPadding,
         title = title,
         titleErrorRes = titleErrorRes,
         imageUri = selectedImageUri?.let(Uri::parse),
@@ -175,6 +182,7 @@ fun AddScreenContent(
     imageUri: Uri?,
     uiState: AddPostUiState,
     modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(),
     onTitleChange: (String) -> Unit,
     onSelectImage: () -> Unit,
     onPost: () -> Unit,
@@ -195,6 +203,10 @@ fun AddScreenContent(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .padding(contentPadding)
+            .consumeWindowInsets(contentPadding)
+            .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(all = 16.dp),
         verticalArrangement = Arrangement.spacedBy(
             space = 16.dp,

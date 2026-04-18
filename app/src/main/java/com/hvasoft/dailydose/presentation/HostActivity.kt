@@ -7,17 +7,19 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -107,6 +109,10 @@ class HostActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         updaterPrefs = getSharedPreferences(UPDATER_PREFS_NAME, MODE_PRIVATE)
+        enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         setContent {
             DailyDoseTheme {
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -125,17 +131,19 @@ class HostActivity : ComponentActivity() {
                     selectedDestination = selectedDestination,
                     snackbarHostState = snackbarHostState,
                     onDestinationSelected = ::onDestinationSelected,
-                    homeContent = {
+                    homeContent = { innerPadding ->
                         HomeRoute(
                             viewModel = homeViewModel,
+                            contentPadding = innerPadding,
                             scrollSignal = homeScrollSignal,
                             modifier = Modifier.fillMaxSize(),
                             onShowMessage = ::showPopUpMessage,
                         )
                     },
-                    addContent = {
+                    addContent = { innerPadding ->
                         AddRoute(
                             viewModel = addViewModel,
+                            contentPadding = innerPadding,
                             modifier = Modifier.fillMaxSize(),
                             onShowMessage = ::showPopUpMessage,
                             onSnapshotPosted = { snapshot ->
@@ -144,9 +152,10 @@ class HostActivity : ComponentActivity() {
                             },
                         )
                     },
-                    profileContent = {
+                    profileContent = { innerPadding ->
                         ProfileRoute(
                             viewModel = profileViewModel,
+                            contentPadding = innerPadding,
                             refreshSignal = profileRefreshSignal,
                             modifier = Modifier.fillMaxSize(),
                             onShowMessage = ::showPopUpMessage,
@@ -428,9 +437,9 @@ private fun HostContent(
     selectedDestination: MainDestination,
     snackbarHostState: SnackbarHostState,
     onDestinationSelected: (MainDestination) -> Unit,
-    homeContent: @Composable () -> Unit,
-    addContent: @Composable () -> Unit,
-    profileContent: @Composable () -> Unit,
+    homeContent: @Composable (PaddingValues) -> Unit,
+    addContent: @Composable (PaddingValues) -> Unit,
+    profileContent: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -456,19 +465,18 @@ private fun HostContent(
             }
         },
     ) { innerPadding ->
-        val contentModifier = Modifier.padding(innerPadding)
-        Box(modifier = contentModifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             when (selectedDestination) {
                 MainDestination.HOME -> {
-                    homeContent()
+                    homeContent(innerPadding)
                 }
 
                 MainDestination.ADD -> {
-                    addContent()
+                    addContent(innerPadding)
                 }
 
                 MainDestination.PROFILE -> {
-                    profileContent()
+                    profileContent(innerPadding)
                 }
             }
         }
