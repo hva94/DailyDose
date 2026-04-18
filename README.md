@@ -18,7 +18,14 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
-## 1.3.0 - Version 4 release.
+## 1.3.1 - Version 4 release.
+- App layouts now draw edge to edge more consistently across modern Android devices.
+- The Home feed now keeps cards and empty states clear of the status and navigation bars.
+- Add and Profile screens now keep content visible and easier to use while the keyboard is open.
+- Reply composer spacing was improved so actions stay reachable above the keyboard.
+- Full-screen image viewing now feels cleaner with better system bar handling.
+
+## 1.3.0
 - Likes were replaced with emoji reactions, including add, switch, and remove actions from the Home feed.
 - Snapshot cards now show reaction summaries and reply counts, with a reply sheet for reading and posting in context.
 - Reactions and replies now support offline pending state and reconnect reconciliation.
