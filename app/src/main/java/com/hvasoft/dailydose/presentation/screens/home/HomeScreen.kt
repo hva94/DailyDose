@@ -1,8 +1,11 @@
 package com.hvasoft.dailydose.presentation.screens.home
 
 import android.content.Context
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -14,26 +17,37 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,13 +61,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -69,18 +83,31 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.SubcomposeAsyncImage
 import com.hvasoft.dailydose.R
+import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.domain.common.extension_functions.isOwnedBy
 import com.hvasoft.dailydose.domain.model.HomeFeedAvailabilityMode
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReply
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import com.hvasoft.dailydose.presentation.screens.common.DefaultImageAspectRatio
 import com.hvasoft.dailydose.presentation.screens.common.ShimmerPlaceholder
 import com.hvasoft.dailydose.presentation.screens.common.calculateClampedAspectRatio
 import com.hvasoft.dailydose.presentation.screens.common.formatRelativeTime
+import com.hvasoft.dailydose.presentation.screens.common.formatReplyCount
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
-import com.hvasoft.dailydose.presentation.theme.Unselected
+import com.hvasoft.dailydose.presentation.theme.PrimaryLight
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+
+private const val white_hearth = "\uD83E\uDD0D"
+private const val purple_hearth = "\uD83D\uDC9C"
+private val ReactionOptions = listOf(purple_hearth, "\ud83d\udd25", "\ud83d\ude02", "\ud83d\ude2e", "\ud83d\ude22", "\ud83d\ude21")
+
+private const val ReactionButtonTag = "snapshot_reaction_button"
+private const val ReplyButtonTag = "snapshot_reply_button"
+private const val ReplyInputTag = "snapshot_reply_input"
+private const val ReplySendButtonTag = "snapshot_reply_send_button"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,6 +119,7 @@ fun HomeRoute(
 ) {
     val pagingItems = viewModel.snapshots.collectAsLazyPagingItems()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val replySheetState by viewModel.replySheetState.collectAsStateWithLifecycle()
     var pendingDeleteSnapshot by remember { mutableStateOf<Snapshot?>(null) }
     var expandedImage by remember { mutableStateOf<ExpandedImageState?>(null) }
     var shouldScrollToTop by remember { mutableStateOf(false) }
@@ -134,13 +162,8 @@ fun HomeRoute(
         modifier = modifier,
         onRetry = viewModel::retrySync,
         onRefresh = viewModel::retrySync,
-        onLikeToggle = { snapshot, isLiked ->
-            if (uiState.actionPolicy == HomeFeedActionPolicy.READ_ONLY_OFFLINE) {
-                onShowMessage(R.string.home_like_offline_unavailable)
-                return@HomeScreen
-            }
-            viewModel.setLikeSnapshot(snapshot, isLiked)
-        },
+        onReactionSelected = viewModel::setSnapshotReaction,
+        onOpenReplies = viewModel::openReplies,
         onShare = { snapshot ->
             val canUseRemote = uiState.actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
             if (snapshot.canShareImage(canUseRemote).not()) {
@@ -178,6 +201,16 @@ fun HomeRoute(
             }
         },
     )
+
+    if (replySheetState.isVisible) {
+        SnapshotReplySheet(
+            state = replySheetState,
+            onDismiss = viewModel::closeReplies,
+            onDraftChange = viewModel::updateReplyComposer,
+            onRetry = viewModel::retryReplies,
+            onSubmit = viewModel::submitReply,
+        )
+    }
 
     pendingDeleteSnapshot?.let {
         AlertDialog(
@@ -222,7 +255,8 @@ private fun HomeScreen(
     modifier: Modifier = Modifier,
     onRetry: () -> Unit,
     onRefresh: () -> Unit,
-    onLikeToggle: (Snapshot, Boolean) -> Unit,
+    onReactionSelected: (Snapshot, String) -> Unit,
+    onOpenReplies: (Snapshot) -> Unit,
     onShare: (Snapshot) -> Unit,
     onOpenImage: (Snapshot) -> Unit,
     onRequestDelete: (Snapshot) -> Unit,
@@ -252,7 +286,7 @@ private fun HomeScreen(
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center),
                     )
-               }
+                }
 
                 isOfflineEmpty -> {
                     OfflineEmptyState(
@@ -303,9 +337,8 @@ private fun HomeScreen(
                             SnapshotCard(
                                 snapshot = snapshot,
                                 actionPolicy = uiState.actionPolicy,
-                                isLiked = snapshot.isLikedByCurrentUser,
-                                likeCount = snapshot.likeCount.toIntOrNull() ?: 0,
-                                onLikeToggle = { onLikeToggle(snapshot, it) },
+                                onReactionSelected = { emoji -> onReactionSelected(snapshot, emoji) },
+                                onOpenReplies = { onOpenReplies(snapshot) },
                                 onDelete = { onRequestDelete(snapshot) },
                                 onShare = { onShare(snapshot) },
                                 onOpenImage = { onOpenImage(snapshot) },
@@ -368,9 +401,8 @@ private fun HomeFeedStatusPanel(
 private fun SnapshotCard(
     snapshot: Snapshot,
     actionPolicy: HomeFeedActionPolicy,
-    isLiked: Boolean,
-    likeCount: Int,
-    onLikeToggle: (Boolean) -> Unit,
+    onReactionSelected: (String) -> Unit,
+    onOpenReplies: () -> Unit,
     onDelete: () -> Unit,
     onShare: () -> Unit,
     onOpenImage: () -> Unit,
@@ -385,10 +417,11 @@ private fun SnapshotCard(
     val avatarImageModel = if (isPreview) R.drawable.image_placeholder else snapshot.preferredUserPhotoModel(allowRemoteFallback)
     val canOpenImage = !isPreview && snapshot.hasAnyImageAvailable(allowRemoteFallback)
     val canShareImage = !isPreview && snapshot.canShareImage(allowRemoteFallback)
-    val allowMutatingActions = actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
+    val allowDelete = actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
     var imageAspectRatio by remember(snapshot.snapshotKey) {
         mutableFloatStateOf(DefaultImageAspectRatio)
     }
+    val replyCountLabel = formatReplyCount(resources, snapshot.replyCount)
 
     Card(
         colors = CardDefaults.cardColors(
@@ -445,7 +478,7 @@ private fun SnapshotCard(
                 if (snapshot.isOwnedBy(currentUserId)) {
                     IconButton(
                         onClick = onDelete,
-                        enabled = allowMutatingActions,
+                        enabled = allowDelete,
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_delete),
@@ -505,46 +538,439 @@ private fun SnapshotCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+            Text(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                text = snapshot.title.orEmpty(),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            PostInteractionRow(
+                snapshot = snapshot,
+                replyCountLabel = replyCountLabel,
+                canShareImage = canShareImage,
+                onReactionSelected = onReactionSelected,
+                onOpenReplies = onOpenReplies,
+                onShare = onShare,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PostInteractionRow(
+    snapshot: Snapshot,
+    replyCountLabel: String,
+    canShareImage: Boolean,
+    onReactionSelected: (String) -> Unit,
+    onOpenReplies: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ReactionPickerButton(
+                reactionSummary = snapshot.reactionSummary,
+                currentUserReaction = snapshot.currentUserReaction,
+                onReactionSelected = onReactionSelected,
+            )
+            TextButton(
+                onClick = onOpenReplies,
+                modifier = Modifier
+                    .testTag(ReplyButtonTag)
+                    .padding(horizontal = 8.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    IconToggleButton(
-                        checked = isLiked,
-                        enabled = allowMutatingActions,
-                        onCheckedChange = onLikeToggle,
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_drop_dailydose),
-                            contentDescription = null,
-                            colorFilter = ColorFilter.tint(
-                                if (isLiked) MaterialTheme.colorScheme.primary else Unselected,
-                            ),
+                Text(text = replyCountLabel)
+            }
+            if (snapshot.hasPendingReaction || snapshot.hasPendingReply) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = onShare,
+                enabled = canShareImage,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_share),
+                    contentDescription = stringResource(R.string.home_description_button_share),
+                    tint = PrimaryLight,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReactionPickerButton(
+    reactionSummary: Map<String, Int>,
+    currentUserReaction: String?,
+    onReactionSelected: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        ReactionSummaryRow(
+            summary = reactionSummary,
+            currentUserReaction = currentUserReaction,
+            onClick = { expanded = true },
+        )
+        DropdownMenu(
+            shape = MaterialTheme.shapes.extraLarge,
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            ReactionOptions.forEach { emoji ->
+                DropdownMenuItem(
+                    modifier = Modifier
+                        .size(56.dp),
+                    text = { Text(
+                        text = emoji,
+                        style = MaterialTheme.typography.titleLarge,
+                    ) },
+                    onClick = {
+                        expanded = false
+                        onReactionSelected(emoji)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReactionSummaryRow(
+    summary: Map<String, Int>,
+    currentUserReaction: String?,
+    onClick: () -> Unit,
+) {
+    val totalCount = summary.values.sum()
+
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.testTag(ReactionButtonTag),
+    ) {
+        if (summary.isEmpty() || totalCount <= 0) {
+            ReactionItem(
+                emoji = white_hearth,
+                isSelected = false,
+            )
+        } else {
+            val sortedReactions = summary.entries
+                .sortedWith(
+                    compareByDescending<Map.Entry<String, Int>> { it.key == currentUserReaction }
+                        .thenByDescending { it.value }
+                )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                sortedReactions
+                    .forEach { (emoji, _) ->
+                        val isSelected = emoji == currentUserReaction
+                        ReactionItem(
+                            emoji = emoji,
+                            isSelected = isSelected,
                         )
                     }
-                    Text(
-                        text = likeCount.toString(),
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                Text(
+                    modifier = Modifier.padding(start = 4.dp),
+                    text = "$totalCount",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(modifier = Modifier.size(12.dp))
-                    Text(
-                        text = snapshot.title.orEmpty(),
-                        style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReactionItem(
+    emoji: String,
+    isSelected: Boolean,
+) {
+    val background = if (isSelected) {
+        PrimaryLight.copy(alpha = 0.2f)
+    } else {
+        Color.Transparent
+    }
+
+    val border = if (isSelected) {
+        BorderStroke(1.dp, PrimaryLight)
+    } else null
+
+    val size by animateDpAsState(
+        targetValue = if (isSelected) 36.dp else 28.dp,
+        label = "size"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(background)
+            .then(
+                if (border != null) Modifier.border(border, RoundedCornerShape(24.dp))
+                else Modifier
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = emoji,
+            style = if (isSelected) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SnapshotReplySheet(
+    state: HomeReplySheetUiState,
+    onDismiss: () -> Unit,
+    onDraftChange: (String) -> Unit,
+    onRetry: () -> Unit,
+    onSubmit: () -> Unit,
+) {
+    val snapshot = state.snapshot ?: return
+    val trimmedComposerLength = state.composerText.trim().length
+    val exceedsReplyLimit = trimmedComposerLength > Constants.REPLY_CHAR_LIMIT
+    val canSubmitReply = !state.isSubmitting && trimmedComposerLength in 1..Constants.REPLY_CHAR_LIMIT
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.home_reply_sheet_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = snapshot.title.orEmpty(),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                text = snapshot.userName.orEmpty(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            when {
+                state.isLoading -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+
+                state.errorMessageRes != null && state.replies.isEmpty() -> {
+                    ReplyMessageState(
+                        title = stringResource(R.string.home_reply_load_error),
+                        message = stringResource(R.string.error_connectivity),
+                        actionLabel = stringResource(R.string.retry_text),
+                        modifier = Modifier.fillMaxWidth(),
+                        onAction = onRetry,
                     )
                 }
-                IconButton(
-                    onClick = onShare,
-                    enabled = canShareImage,
+
+                state.isEmpty -> {
+                    ReplyMessageState(
+                        title = stringResource(R.string.home_reply_empty_title),
+                        message = stringResource(R.string.home_reply_empty_message),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .heightIn(min = 120.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(
+                            items = state.replies,
+                            key = SnapshotReply::replyId,
+                        ) { reply ->
+                            ReplyRow(reply = reply)
+                        }
+                    }
+                }
+            }
+
+            state.errorMessageRes?.let { messageRes ->
+                if (state.replies.isNotEmpty()) {
+                    Text(
+                        text = stringResource(messageRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = state.composerText,
+                onValueChange = onDraftChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ReplyInputTag),
+                label = { Text(text = stringResource(R.string.home_reply_hint)) },
+                isError = exceedsReplyLimit || state.composerMessageRes != null,
+                supportingText = {
+                    val supportingText = if (state.composerMessageRes != null) {
+                        stringResource(state.composerMessageRes)
+                    } else {
+                        stringResource(
+                            R.string.home_reply_character_count,
+                            state.composerText.length,
+                            Constants.REPLY_CHAR_LIMIT,
+                        )
+                    }
+                    Text(text = supportingText)
+                },
+                enabled = !state.isSubmitting,
+            )
+
+            Button(
+                onClick = onSubmit,
+                enabled = canSubmitReply,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .testTag(ReplySendButtonTag),
+            ) {
+                Text(
+                    text = if (state.isSubmitting) {
+                        stringResource(R.string.home_reply_sending)
+                    } else {
+                        stringResource(R.string.home_reply_send)
+                    },
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun ReplyRow(reply: SnapshotReply) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            if (reply.userPhotoUrl.isNullOrBlank()) {
+                AvatarPlaceholder(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(MaterialTheme.shapes.extraLarge),
+                )
+            } else {
+                SubcomposeAsyncImage(
+                    model = reply.userPhotoUrl,
+                    contentDescription = stringResource(R.string.home_description_profile_user_photo),
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(MaterialTheme.shapes.extraLarge),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        ShimmerPlaceholder(
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
+                    error = {
+                        AvatarPlaceholder(
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
+                )
+            }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = reply.userName.ifBlank { stringResource(R.string.home_reply_author_fallback) },
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = reply.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_share),
-                        contentDescription = stringResource(R.string.home_description_button_share),
+                    Text(
+                        text = formatOfflineSyncTime(reply.dateTime),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (reply.deliveryState == SnapshotReplyDeliveryState.PENDING) {
+                        Text(
+                            text = stringResource(R.string.home_reply_pending_indicator),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplyMessageState(
+    title: String,
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    Column(
+        modifier = modifier.padding(vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(text = actionLabel)
             }
         }
     }
@@ -843,12 +1269,14 @@ private fun SnapshotCardPreview() {
                 userName = "Henry",
                 userPhotoUrl = "",
                 snapshotKey = "preview",
-                likeCount = "7",
+                reactionCount = 3,
+                reactionSummary = mapOf(purple_hearth to 2, "\ud83d\udd25" to 1),
+                replyCount = 2,
+                currentUserReaction = purple_hearth,
             ),
             actionPolicy = HomeFeedActionPolicy.FULL_ACCESS,
-            isLiked = true,
-            likeCount = 7,
-            onLikeToggle = {},
+            onReactionSelected = {},
+            onOpenReplies = {},
             onDelete = {},
             onShare = {},
             onOpenImage = {},

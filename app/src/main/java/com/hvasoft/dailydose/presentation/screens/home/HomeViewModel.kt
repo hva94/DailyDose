@@ -8,10 +8,12 @@ import androidx.paging.cachedIn
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
 import com.hvasoft.dailydose.di.DispatcherIO
+import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCase
 import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
+import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
-import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
+import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
 import com.hvasoft.dailydose.domain.model.Snapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -27,6 +29,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -35,8 +38,10 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     @DispatcherIO private val dispatcherIO: CoroutineDispatcher,
     private val getSnapshotsUseCase: GetSnapshotsUseCase,
+    private val getSnapshotRepliesUseCase: GetSnapshotRepliesUseCase,
+    private val addSnapshotReplyUseCase: AddSnapshotReplyUseCase,
     private val cachePostedSnapshotUseCase: CachePostedSnapshotUseCase,
-    private val toggleUserLikeUseCase: ToggleUserLikeUseCase,
+    private val setSnapshotReactionUseCase: SetSnapshotReactionUseCase,
     private val deleteSnapshotUseCase: DeleteSnapshotUseCase,
     private val authSessionProvider: AuthSessionProvider,
 ) : ViewModel() {
@@ -44,8 +49,10 @@ class HomeViewModel @Inject constructor(
     private val sourceSignal = MutableStateFlow(0)
     private val isRefreshInFlight = MutableStateFlow(false)
     private val isRefreshIndicatorVisible = MutableStateFlow(false)
+    private val _replySheetState = MutableStateFlow(HomeReplySheetUiState())
     private val _events = MutableSharedFlow<Int>(extraBufferCapacity = 4)
     val events = _events.asSharedFlow()
+    val replySheetState = _replySheetState
 
     @OptIn(ExperimentalPagingApi::class)
     val snapshots: Flow<PagingData<Snapshot>> = sourceSignal
@@ -105,14 +112,10 @@ class HomeViewModel @Inject constructor(
 
     fun currentUserIdOrNull(): String? = authSessionProvider.currentUserIdOrNull()
 
-    fun setLikeSnapshot(snapshot: Snapshot, isChecked: Boolean) {
-        if (uiState.value.actionPolicy == HomeFeedActionPolicy.READ_ONLY_OFFLINE) {
-            _events.tryEmit(R.string.home_like_offline_unavailable)
-            return
-        }
+    fun setSnapshotReaction(snapshot: Snapshot, emoji: String) {
         viewModelScope.launch(dispatcherIO) {
             runCatching {
-                toggleUserLikeUseCase.invoke(snapshot, isChecked)
+                setSnapshotReactionUseCase.invoke(snapshot, emoji)
             }.onFailure {
                 _events.tryEmit(R.string.error_unknown)
             }
@@ -133,10 +136,111 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun openReplies(snapshot: Snapshot) {
+        _replySheetState.value = HomeReplySheetUiState(
+            isVisible = true,
+            snapshot = snapshot,
+            isLoading = true,
+        )
+        loadReplies(snapshot)
+    }
+
+    fun closeReplies() {
+        _replySheetState.value = HomeReplySheetUiState()
+    }
+
+    fun retryReplies() {
+        _replySheetState.value.snapshot?.let(::loadReplies)
+    }
+
+    fun updateReplyComposer(text: String) {
+        _replySheetState.update { current ->
+            current.copy(
+                composerText = text,
+                composerMessageRes = null,
+            )
+        }
+    }
+
+    fun submitReply() {
+        val snapshot = _replySheetState.value.snapshot ?: return
+        viewModelScope.launch(dispatcherIO) {
+            _replySheetState.update { current ->
+                current.copy(
+                    isSubmitting = true,
+                    composerMessageRes = null,
+                )
+            }
+
+            addSnapshotReplyUseCase.invoke(snapshot, _replySheetState.value.composerText)
+                .onSuccess {
+                    _replySheetState.update { current ->
+                        current.copy(
+                            composerText = "",
+                            isSubmitting = false,
+                            composerMessageRes = null,
+                        )
+                    }
+                    loadReplies(snapshot)
+                }
+                .onFailure { failure ->
+                    val messageRes = when ((failure as? IllegalArgumentException)?.message) {
+                        "blank" -> R.string.home_reply_blank_error
+                        "length" -> R.string.home_reply_length_error
+                        else -> R.string.error_unknown
+                    }
+                    _replySheetState.update { current ->
+                        current.copy(
+                            isSubmitting = false,
+                            composerMessageRes = messageRes,
+                        )
+                    }
+                    if (messageRes == R.string.error_unknown) {
+                        _events.tryEmit(messageRes)
+                    }
+                }
+        }
+    }
+
     fun clearOfflineSnapshots(accountId: String) {
         viewModelScope.launch(dispatcherIO) {
+            closeReplies()
             getSnapshotsUseCase.clearOfflineSnapshots(accountId)
             sourceSignal.value += 1
+        }
+    }
+
+    private fun loadReplies(snapshot: Snapshot) {
+        viewModelScope.launch(dispatcherIO) {
+            _replySheetState.update { current ->
+                current.copy(
+                    isVisible = true,
+                    snapshot = snapshot,
+                    isLoading = true,
+                    errorMessageRes = null,
+                )
+            }
+
+            getSnapshotRepliesUseCase.invoke(snapshot)
+                .onSuccess { replies ->
+                    _replySheetState.update { current ->
+                        current.copy(
+                            snapshot = snapshot,
+                            replies = replies,
+                            isLoading = false,
+                            errorMessageRes = null,
+                        )
+                    }
+                }
+                .onFailure {
+                    _replySheetState.update { current ->
+                        current.copy(
+                            snapshot = snapshot,
+                            isLoading = false,
+                            errorMessageRes = R.string.home_reply_load_error,
+                        )
+                    }
+                }
         }
     }
 
@@ -172,6 +276,7 @@ class HomeViewModel @Inject constructor(
                 indicatorJob?.cancel()
                 isRefreshIndicatorVisible.value = false
                 isRefreshInFlight.value = false
+                _replySheetState.value.snapshot?.let(::loadReplies)
             }
         }
     }

@@ -3,6 +3,8 @@ package com.hvasoft.dailydose.presentation.screens.home
 import com.hvasoft.dailydose.domain.model.HomeFeedAvailabilityMode
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
+import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReply
 
 data class HomeFeedUiState(
     val availabilityMode: HomeFeedAvailabilityMode = HomeFeedAvailabilityMode.OFFLINE_EMPTY,
@@ -12,6 +14,7 @@ data class HomeFeedUiState(
     val showsRefreshIndicator: Boolean = false,
     val actionPolicy: HomeFeedActionPolicy = HomeFeedActionPolicy.READ_ONLY_OFFLINE,
     val hasRetainedContent: Boolean = false,
+    val canQueueInteractions: Boolean = false,
 ) {
     val isInitialLoadInProgress: Boolean
         get() = isBackgroundRefreshing &&
@@ -39,6 +42,7 @@ data class HomeFeedUiState(
                     HomeFeedActionPolicy.READ_ONLY_OFFLINE
                 },
                 hasRetainedContent = syncState.hasRetainedContent,
+                canQueueInteractions = syncState.hasRetainedContent,
             )
     }
 }
@@ -46,4 +50,18 @@ data class HomeFeedUiState(
 enum class HomeFeedActionPolicy {
     FULL_ACCESS,
     READ_ONLY_OFFLINE,
+}
+
+data class HomeReplySheetUiState(
+    val isVisible: Boolean = false,
+    val snapshot: Snapshot? = null,
+    val replies: List<SnapshotReply> = emptyList(),
+    val composerText: String = "",
+    val isLoading: Boolean = false,
+    val isSubmitting: Boolean = false,
+    val errorMessageRes: Int? = null,
+    val composerMessageRes: Int? = null,
+) {
+    val isEmpty: Boolean
+        get() = !isLoading && errorMessageRes == null && replies.isEmpty()
 }

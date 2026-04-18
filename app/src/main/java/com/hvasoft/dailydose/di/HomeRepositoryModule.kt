@@ -10,6 +10,7 @@ import com.hvasoft.dailydose.data.auth.FirebaseAuthSessionProvider
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.local.DailyDoseDatabase
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
+import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
 import com.hvasoft.dailydose.data.local.HomeFeedTransactionRunner
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
@@ -20,6 +21,7 @@ import com.hvasoft.dailydose.data.local.RoomHomeFeedTransactionRunner
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseServiceImpl
 import com.hvasoft.dailydose.data.repository.HomeFeedRefreshCoordinator
+import com.hvasoft.dailydose.data.repository.SnapshotInteractionSyncCoordinator
 import com.hvasoft.dailydose.data.repository.AddSnapshotRepositoryImpl
 import com.hvasoft.dailydose.data.repository.HomeRepositoryImpl
 import com.hvasoft.dailydose.data.repository.ProfileRepositoryImpl
@@ -67,18 +69,22 @@ object HomeRepositoryModule {
         remoteDatabaseService: RemoteDatabaseService,
         offlineFeedItemDao: OfflineFeedItemDao,
         offlineMediaAssetDao: OfflineMediaAssetDao,
+        pendingSnapshotActionDao: PendingSnapshotActionDao,
         feedSyncStateDao: FeedSyncStateDao,
         offlineFeedMapper: OfflineFeedMapper,
         refreshCoordinator: HomeFeedRefreshCoordinator,
+        interactionSyncCoordinator: SnapshotInteractionSyncCoordinator,
         authSessionProvider: AuthSessionProvider,
         feedAssetStorage: FeedAssetStorage,
     ): HomeRepository = HomeRepositoryImpl(
         remoteDatabaseService = remoteDatabaseService,
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
+        pendingSnapshotActionDao = pendingSnapshotActionDao,
         feedSyncStateDao = feedSyncStateDao,
         offlineFeedMapper = offlineFeedMapper,
         refreshCoordinator = refreshCoordinator,
+        interactionSyncCoordinator = interactionSyncCoordinator,
         authSessionProvider = authSessionProvider,
         feedAssetStorage = feedAssetStorage,
     )
@@ -148,6 +154,10 @@ object HomeRepositoryModule {
         database.feedSyncStateDao()
 
     @Provides
+    fun providesPendingSnapshotActionDao(database: DailyDoseDatabase): PendingSnapshotActionDao =
+        database.pendingSnapshotActionDao()
+
+    @Provides
     @Singleton
     fun providesOfflineFeedMapper(): OfflineFeedMapper = OfflineFeedMapper()
 
@@ -184,5 +194,17 @@ object HomeRepositoryModule {
         feedAssetStorage = feedAssetStorage,
         profileLocalCache = profileLocalCache,
         dispatcherIO = dispatcherIO,
+    )
+
+    @Provides
+    @Singleton
+    fun providesSnapshotInteractionSyncCoordinator(
+        remoteDatabaseService: RemoteDatabaseService,
+        pendingSnapshotActionDao: PendingSnapshotActionDao,
+        offlineFeedItemDao: OfflineFeedItemDao,
+    ): SnapshotInteractionSyncCoordinator = SnapshotInteractionSyncCoordinator(
+        remoteDatabaseService = remoteDatabaseService,
+        pendingSnapshotActionDao = pendingSnapshotActionDao,
+        offlineFeedItemDao = offlineFeedItemDao,
     )
 }

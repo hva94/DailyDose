@@ -18,6 +18,14 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
+## 1.3.0
+- Likes were replaced with emoji reactions, including add, switch, and remove actions from the Home feed.
+- Snapshot cards now show reaction summaries and reply counts, with a reply sheet for reading and posting in context.
+- Reactions and replies now support offline pending state and reconnect reconciliation.
+- Feed refresh and migration handling were hardened for older posts, missing summary fields, and partial profile data.
+- Reply avatars now fall back more reliably, and the reply composer now stays above the keyboard.
+- Test coverage was expanded for reactions, replies, offline sync, feed refresh regressions, and UI state handling.
+
 ## 1.2.1
 - Home refresh is now more stable and local-first, so cached content stays visible while sync runs in the background.
 - Posting, deleting, and liking now update the Home feed immediately for a faster and smoother feel.

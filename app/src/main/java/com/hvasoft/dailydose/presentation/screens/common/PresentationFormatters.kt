@@ -57,3 +57,14 @@ fun formatRelativeTime(resources: Resources, dateTime: Long?): String {
         else -> resources.getString(R.string.moment_date_time_label_text)
     }
 }
+
+fun formatReplyCount(resources: Resources, replyCount: Int): String =
+    if (replyCount > 0) {
+        resources.getQuantityString(
+            R.plurals.home_reply_count_label,
+            replyCount,
+            replyCount,
+        )
+    } else {
+        resources.getString(R.string.home_reply_count_empty)
+    }

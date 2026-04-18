@@ -2,11 +2,18 @@ package com.hvasoft.dailydose.data.network.data_source
 
 import com.google.android.gms.tasks.Tasks
 import com.google.common.truth.Truth.assertThat
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
+import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.network.model.SnapshotReactionDTO
+import com.hvasoft.dailydose.data.network.model.SnapshotReplyDTO
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReply
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -55,15 +62,197 @@ class RemoteDatabaseServiceImplTest {
     }
 
     @Test
-    fun `toggleUserLike throws a controlled error when no signed in user exists`() = runTest {
+    fun `setSnapshotReaction throws a controlled error when no signed in user exists`() = runTest {
         val failure = runCatching {
-            service.toggleUserLike(
-                snapshot = Snapshot(snapshotKey = "snapshot-1"),
-                isChecked = true,
+            service.setSnapshotReaction(
+                snapshotId = "snapshot-1",
+                emoji = "\uD83D\uDD25",
             )
         }.exceptionOrNull()
 
         assertThat(failure).isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun `setSnapshotReaction writes the user reaction and summary fields`() = runTest {
+        val currentUser = mockk<FirebaseUser>()
+        every { currentUser.uid } returns "user-123"
+        authSessionProvider.setCurrentUser(currentUser)
+
+        val snapshotReference = mockk<DatabaseReference>()
+        val reactionsReference = mockk<DatabaseReference>()
+        val reactionUserReference = mockk<DatabaseReference>()
+        val summaryReference = mockk<DatabaseReference>()
+        val countReference = mockk<DatabaseReference>()
+        val likeListReference = mockk<DatabaseReference>()
+        val dateTimeSnapshot = mockk<DataSnapshot>()
+        val likeListSnapshot = mockk<DataSnapshot>()
+        val reactionsSnapshot = mockk<DataSnapshot>()
+        val snapshotState = mockk<DataSnapshot>()
+
+        every { snapshotsDatabase.child("snapshot-1") } returns snapshotReference
+        every { snapshotReference.get() } returns Tasks.forResult(snapshotState)
+        every { snapshotReference.child(Constants.REACTIONS_PATH) } returns reactionsReference
+        every { reactionsReference.child("user-123") } returns reactionUserReference
+        every { snapshotReference.child(Constants.REACTION_SUMMARY_PROPERTY) } returns summaryReference
+        every { snapshotReference.child(Constants.REACTION_COUNT_PROPERTY) } returns countReference
+        every { snapshotReference.child(Constants.LIKE_LIST_PROPERTY) } returns likeListReference
+        every { reactionUserReference.setValue(any()) } returns Tasks.forResult(null)
+        every { summaryReference.setValue(any()) } returns Tasks.forResult(null)
+        every { countReference.setValue(any()) } returns Tasks.forResult(null)
+        every { likeListReference.child("user-123") } returns mockk(relaxed = true)
+        every { snapshotState.child("dateTime") } returns dateTimeSnapshot
+        every { snapshotState.child(Constants.LIKE_LIST_PROPERTY) } returns likeListSnapshot
+        every { snapshotState.child(Constants.REACTIONS_PATH) } returns reactionsSnapshot
+        every { dateTimeSnapshot.getValue(Long::class.java) } returns 100L
+        every { likeListSnapshot.children } returns emptyList()
+        every { likeListSnapshot.hasChild("user-123") } returns false
+        every { reactionsSnapshot.children } returns emptyList()
+
+        val result = service.setSnapshotReaction("snapshot-1", "\uD83D\uDD25")
+
+        assertThat(result).isEqualTo(1)
+        verify(exactly = 1) {
+            reactionUserReference.setValue(
+                withArg<SnapshotReactionDTO> { reaction ->
+                    assertThat(reaction.userId).isEqualTo("user-123")
+                    assertThat(reaction.emoji).isEqualTo("\uD83D\uDD25")
+                },
+            )
+        }
+        verify(exactly = 1) { summaryReference.setValue(mapOf("\uD83D\uDD25" to 1)) }
+        verify(exactly = 1) { countReference.setValue(1) }
+    }
+
+    @Test
+    fun `setSnapshotReaction removes the active reaction when the same emoji is selected again`() = runTest {
+        val currentUser = mockk<FirebaseUser>()
+        every { currentUser.uid } returns "user-123"
+        authSessionProvider.setCurrentUser(currentUser)
+
+        val snapshotReference = mockk<DatabaseReference>()
+        val reactionsReference = mockk<DatabaseReference>()
+        val reactionUserReference = mockk<DatabaseReference>()
+        val summaryReference = mockk<DatabaseReference>()
+        val countReference = mockk<DatabaseReference>()
+        val likeListReference = mockk<DataSnapshot>()
+        val dateTimeSnapshot = mockk<DataSnapshot>()
+        val reactionsSnapshot = mockk<DataSnapshot>()
+        val snapshotState = mockk<DataSnapshot>()
+        val existingReactionEntry = mockk<DataSnapshot>()
+
+        every { snapshotsDatabase.child("snapshot-1") } returns snapshotReference
+        every { snapshotReference.get() } returns Tasks.forResult(snapshotState)
+        every { snapshotReference.child(Constants.REACTIONS_PATH) } returns reactionsReference
+        every { reactionsReference.child("user-123") } returns reactionUserReference
+        every { snapshotReference.child(Constants.REACTION_SUMMARY_PROPERTY) } returns summaryReference
+        every { snapshotReference.child(Constants.REACTION_COUNT_PROPERTY) } returns countReference
+        every { snapshotState.child("dateTime") } returns dateTimeSnapshot
+        every { snapshotState.child(Constants.LIKE_LIST_PROPERTY) } returns likeListReference
+        every { snapshotState.child(Constants.REACTIONS_PATH) } returns reactionsSnapshot
+        every { dateTimeSnapshot.getValue(Long::class.java) } returns 100L
+        every { likeListReference.children } returns emptyList()
+        every { likeListReference.hasChild("user-123") } returns false
+        every { reactionsSnapshot.children } returns listOf(existingReactionEntry)
+        every { existingReactionEntry.getValue(SnapshotReactionDTO::class.java) } returns SnapshotReactionDTO(
+            userId = "user-123",
+            emoji = "\uD83D\uDD25",
+            createdAt = 1L,
+            updatedAt = 1L,
+        )
+        every { reactionUserReference.setValue(null) } returns Tasks.forResult(null)
+        every { summaryReference.setValue(emptyMap<String, Int>()) } returns Tasks.forResult(null)
+        every { countReference.setValue(0) } returns Tasks.forResult(null)
+
+        val result = service.setSnapshotReaction("snapshot-1", "\uD83D\uDD25")
+
+        assertThat(result).isEqualTo(1)
+        verify(exactly = 1) { reactionUserReference.setValue(null) }
+        verify(exactly = 1) { summaryReference.setValue(emptyMap<String, Int>()) }
+        verify(exactly = 1) { countReference.setValue(0) }
+    }
+
+    @Test
+    fun `addSnapshotReply stores the reply and updates replyCount`() = runTest {
+        val snapshotReference = mockk<DatabaseReference>()
+        val repliesReference = mockk<DatabaseReference>()
+        val generatedReplyReference = mockk<DatabaseReference>()
+        val storedReplyReference = mockk<DatabaseReference>()
+        val replyCountReference = mockk<DatabaseReference>()
+        val repliesSnapshot = mockk<DataSnapshot>()
+
+        every { snapshotsDatabase.child("snapshot-1") } returns snapshotReference
+        every { snapshotReference.child(Constants.REPLIES_PATH) } returns repliesReference
+        every { repliesReference.push() } returns generatedReplyReference
+        every { generatedReplyReference.key } returns "reply-1"
+        every { repliesReference.child("reply-1") } returns storedReplyReference
+        every { storedReplyReference.setValue(any()) } returns Tasks.forResult(null)
+        every { repliesReference.get() } returns Tasks.forResult(repliesSnapshot)
+        every { repliesSnapshot.childrenCount } returns 1L
+        every { snapshotReference.child(Constants.REPLY_COUNT_PROPERTY) } returns replyCountReference
+        every { replyCountReference.setValue(1) } returns Tasks.forResult(null)
+
+        val reply = service.addSnapshotReply(
+            snapshotId = "snapshot-1",
+            reply = SnapshotReply(
+                replyId = "local-1",
+                snapshotId = "snapshot-1",
+                idUserOwner = "user-123",
+                userName = "Henry",
+                userPhotoUrl = null,
+                text = "Hello",
+                dateTime = 100L,
+                deliveryState = SnapshotReplyDeliveryState.PENDING,
+            ),
+        )
+
+        assertThat(reply.replyId).isEqualTo("reply-1")
+        assertThat(reply.deliveryState).isEqualTo(SnapshotReplyDeliveryState.CONFIRMED)
+        verify(exactly = 1) {
+            storedReplyReference.setValue(
+                withArg<SnapshotReplyDTO> { dto ->
+                    assertThat(dto.idUserOwner).isEqualTo("user-123")
+                    assertThat(dto.userName).isEqualTo("Henry")
+                    assertThat(dto.text).isEqualTo("Hello")
+                },
+            )
+        }
+        verify(exactly = 1) { replyCountReference.setValue(1) }
+    }
+
+    @Test
+    fun `getSnapshotReplies enriches missing author photo from users data`() = runTest {
+        val snapshotReference = mockk<DatabaseReference>()
+        val repliesReference = mockk<DatabaseReference>()
+        val repliesSnapshot = mockk<DataSnapshot>()
+        val replyEntry = mockk<DataSnapshot>()
+        val userSnapshot = mockk<DataSnapshot>()
+
+        every { snapshotsDatabase.child("snapshot-1") } returns snapshotReference
+        every { snapshotReference.child(Constants.REPLIES_PATH) } returns repliesReference
+        every { repliesReference.get() } returns Tasks.forResult(repliesSnapshot)
+        every { repliesSnapshot.children } returns listOf(replyEntry)
+        every { replyEntry.key } returns "reply-1"
+        every { replyEntry.getValue(SnapshotReplyDTO::class.java) } returns SnapshotReplyDTO(
+            idUserOwner = "user-123",
+            userName = "Henry",
+            userPhotoUrl = "",
+            text = "Hello",
+            dateTime = 100L,
+        )
+        every { usersDatabase.child("user-123") } returns mockk<DatabaseReference>().also { userReference ->
+            every { userReference.get() } returns Tasks.forResult(userSnapshot)
+        }
+        every { userSnapshot.getValue(com.hvasoft.dailydose.data.network.model.User::class.java) } returns
+            com.hvasoft.dailydose.data.network.model.User(
+                userName = "Henry",
+                photoUrl = "https://example.com/profile.jpg",
+            )
+
+        val replies = service.getSnapshotReplies("snapshot-1")
+
+        assertThat(replies).hasSize(1)
+        assertThat(replies.single().userPhotoUrl).isEqualTo("https://example.com/profile.jpg")
     }
 
     @Test

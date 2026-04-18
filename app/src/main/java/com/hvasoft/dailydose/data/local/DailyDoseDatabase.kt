@@ -9,8 +9,9 @@ import androidx.room.TypeConverters
         OfflineFeedItemEntity::class,
         OfflineMediaAssetEntity::class,
         FeedSyncStateEntity::class,
+        PendingSnapshotActionEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(FeedOfflineTypeConverters::class)
@@ -18,4 +19,5 @@ abstract class DailyDoseDatabase : RoomDatabase() {
     abstract fun offlineFeedItemDao(): OfflineFeedItemDao
     abstract fun offlineMediaAssetDao(): OfflineMediaAssetDao
     abstract fun feedSyncStateDao(): FeedSyncStateDao
+    abstract fun pendingSnapshotActionDao(): PendingSnapshotActionDao
 }

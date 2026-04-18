@@ -1,8 +1,10 @@
 # DailyDose Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-15
+Auto-generated from all feature plans. Last updated: 2026-04-17
 
 ## Active Technologies
+- Kotlin on JVM 17, Android app with minSdk 24 / targetSdk 36 + Jetpack Compose Material3, Paging 3, Hilt, Firebase Realtime Database, Firebase Storage, Coil, AndroidX Room (003-snapshot-reactions-replies)
+- Firebase Realtime Database for snapshots/reactions/replies and summary fields; Firebase Storage for post images; Room plus app-private files for retained feed and offline action state (003-snapshot-reactions-replies)
 
 - Kotlin on JVM 17, Android app with minSdk 24 / targetSdk 36 + Jetpack Compose Material3, Paging 3, Hilt, Firebase Realtime Database, Firebase Storage, Coil, planned AndroidX Room for local persistence (003-offline-feed-support)
 
@@ -22,6 +24,7 @@ tests/
 Kotlin on JVM 17, Android app with minSdk 24 / targetSdk 36: Follow standard conventions
 
 ## Recent Changes
+- 003-snapshot-reactions-replies: Added Kotlin on JVM 17, Android app with minSdk 24 / targetSdk 36 + Jetpack Compose Material3, Paging 3, Hilt, Firebase Realtime Database, Firebase Storage, Coil, AndroidX Room
 
 - 003-offline-feed-support: Added Kotlin on JVM 17, Android app with minSdk 24 / targetSdk 36 + Jetpack Compose Material3, Paging 3, Hilt, Firebase Realtime Database, Firebase Storage, Coil, planned AndroidX Room for local persistence
 

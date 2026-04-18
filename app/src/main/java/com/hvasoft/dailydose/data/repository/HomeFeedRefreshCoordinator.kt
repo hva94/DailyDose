@@ -15,7 +15,9 @@ import com.hvasoft.dailydose.data.local.OfflineMediaDownloadStatus
 import com.hvasoft.dailydose.data.local.ProfileLocalCache
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.di.DispatcherIO
-import com.hvasoft.dailydose.domain.common.extension_functions.isLikedBy
+import com.hvasoft.dailydose.domain.common.extension_functions.normalizedCurrentUserReaction
+import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionCount
+import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionSummary
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.Snapshot
 import kotlinx.coroutines.CoroutineDispatcher
@@ -202,10 +204,17 @@ class HomeFeedRefreshCoordinator @Inject constructor(
         val avatarAsset: DesiredAsset?,
         val likeCount: Int,
         val likedByCurrentUser: Boolean,
+        val reactionCount: Int,
+        val reactionSummary: Map<String, Int>,
+        val currentUserReaction: String?,
+        val replyCount: Int,
+        val legacyLikeCount: Int?,
     ) {
         fun metadataMatches(existingItem: OfflineFeedItemEntity): Boolean = existingItem.copy(
             availabilityStatus = existingItem.availabilityStatus,
             syncedAt = existingItem.syncedAt,
+            hasPendingReaction = existingItem.hasPendingReaction,
+            hasPendingReply = existingItem.hasPendingReply,
         ) == OfflineFeedItemEntity(
             accountId = existingItem.accountId,
             snapshotId = snapshotId,
@@ -220,6 +229,13 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             ownerAvatarAssetId = avatarAsset?.assetId,
             likeCount = likeCount,
             likedByCurrentUser = likedByCurrentUser,
+            reactionCount = reactionCount,
+            reactionSummary = reactionSummary,
+            currentUserReaction = currentUserReaction,
+            replyCount = replyCount,
+            hasPendingReaction = existingItem.hasPendingReaction,
+            hasPendingReply = existingItem.hasPendingReply,
+            legacyLikeCount = legacyLikeCount,
             availabilityStatus = existingItem.availabilityStatus,
             syncedAt = existingItem.syncedAt,
         )
@@ -241,6 +257,13 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             ownerAvatarAssetId = avatarAsset?.assetId,
             likeCount = likeCount,
             likedByCurrentUser = likedByCurrentUser,
+            reactionCount = reactionCount,
+            reactionSummary = reactionSummary,
+            currentUserReaction = currentUserReaction,
+            replyCount = replyCount,
+            hasPendingReaction = false,
+            hasPendingReply = false,
+            legacyLikeCount = legacyLikeCount,
             availabilityStatus = if (mainImageAsset.downloadStatus == OfflineMediaDownloadStatus.READY) {
                 OfflineItemAvailabilityStatus.FULLY_AVAILABLE
             } else {
@@ -257,7 +280,17 @@ class HomeFeedRefreshCoordinator @Inject constructor(
         val ownerUserIds = remoteSnapshots.mapNotNull { snapshot ->
             snapshot.idUserOwner?.takeIf(String::isNotBlank)
         }.toSet()
-        val usersById = remoteDatabaseService.getUsersOnce(ownerUserIds)
+        if (ownerUserIds.isEmpty()) return emptyMap()
+
+        val usersById = runCatching {
+            remoteDatabaseService.getUsersOnce(ownerUserIds)
+        }.getOrElse { failure ->
+            logger.warning(
+                "Failed to load owner profiles for ${ownerUserIds.size} users. " +
+                    "Falling back to cached snapshot identity. Cause: ${failure.message}",
+            )
+            emptyMap()
+        }
 
         return ownerUserIds.associateWith { ownerUserId ->
             val sampleExistingItem = existingFeedItemsBySnapshotId.values.firstOrNull {
@@ -319,8 +352,13 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             ownerDisplayName = resolvedOwnerDisplayName,
             ownerAvatarRemoteUrl = resolvedAvatarUrl,
             avatarAsset = avatarAsset,
-            likeCount = snapshot.likeList?.size ?: snapshot.likeCount.toIntOrNull() ?: existingItem?.likeCount ?: 0,
-            likedByCurrentUser = snapshot.isLikedBy(accountId),
+            likeCount = snapshot.normalizedReactionCount(),
+            likedByCurrentUser = snapshot.normalizedCurrentUserReaction(accountId) != null,
+            reactionCount = snapshot.normalizedReactionCount(),
+            reactionSummary = snapshot.normalizedReactionSummary(),
+            currentUserReaction = snapshot.normalizedCurrentUserReaction(accountId),
+            replyCount = snapshot.replyCount,
+            legacyLikeCount = snapshot.likeList?.size,
         )
     }
 

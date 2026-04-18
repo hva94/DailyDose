@@ -8,6 +8,7 @@ import com.hvasoft.dailydose.data.local.FeedSyncStateDao
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
 import com.hvasoft.dailydose.data.local.OfflineFeedMapper
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
+import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -23,6 +24,8 @@ class HomeRepositoryRefreshTest {
 
     private val accountId = "user-123"
     private lateinit var refreshCoordinator: HomeFeedRefreshCoordinator
+    private lateinit var interactionSyncCoordinator: SnapshotInteractionSyncCoordinator
+    private lateinit var pendingSnapshotActionDao: PendingSnapshotActionDao
     private lateinit var repository: HomeRepositoryImpl
     private lateinit var authSessionProvider: FakeAuthSessionProvider
 
@@ -33,35 +36,69 @@ class HomeRepositoryRefreshTest {
         authSessionProvider = FakeAuthSessionProvider(currentUser)
 
         refreshCoordinator = mockk()
+        interactionSyncCoordinator = mockk()
+        pendingSnapshotActionDao = mockk(relaxed = true)
         repository = HomeRepositoryImpl(
             remoteDatabaseService = mockk(relaxed = true),
             offlineFeedItemDao = mockk<OfflineFeedItemDao>(relaxed = true),
             offlineMediaAssetDao = mockk<OfflineMediaAssetDao>(relaxed = true),
+            pendingSnapshotActionDao = pendingSnapshotActionDao,
             feedSyncStateDao = mockk<FeedSyncStateDao>(relaxed = true),
             offlineFeedMapper = OfflineFeedMapper(),
             refreshCoordinator = refreshCoordinator,
+            interactionSyncCoordinator = interactionSyncCoordinator,
             authSessionProvider = authSessionProvider,
             feedAssetStorage = mockk<FeedAssetStorage>(relaxed = true),
         )
     }
 
     @Test
-    fun `refreshSnapshots delegates retry refresh to coordinator`() = runTest {
+    fun `refreshSnapshots flushes pending interactions after a successful refresh`() = runTest {
         coEvery { refreshCoordinator.refresh(accountId) } returns Result.success(Unit)
+        coEvery {
+            interactionSyncCoordinator.flushPendingActions(
+                accountId = accountId,
+                rollbackOnFailure = true,
+            )
+        } returns SnapshotInteractionSyncCoordinator.SyncResult()
 
         val result = repository.refreshSnapshots()
 
         assertThat(result.isSuccess).isTrue()
         coVerify(exactly = 1) { refreshCoordinator.refresh(accountId) }
+        coVerify(exactly = 1) {
+            interactionSyncCoordinator.flushPendingActions(
+                accountId = accountId,
+                rollbackOnFailure = true,
+            )
+        }
     }
 
     @Test
-    fun `clearOfflineSnapshots delegates cleanup for the provided account`() = runTest {
+    fun `refreshSnapshots performs a second refresh when queued interactions changed feed state`() = runTest {
+        coEvery { refreshCoordinator.refresh(accountId) } returns Result.success(Unit)
+        coEvery {
+            interactionSyncCoordinator.flushPendingActions(
+                accountId = accountId,
+                rollbackOnFailure = true,
+            )
+        } returns SnapshotInteractionSyncCoordinator.SyncResult(applied = true)
+
+        val result = repository.refreshSnapshots()
+
+        assertThat(result.isSuccess).isTrue()
+        coVerify(exactly = 2) { refreshCoordinator.refresh(accountId) }
+    }
+
+    @Test
+    fun `clearOfflineSnapshots delegates cleanup for the provided account and pending actions`() = runTest {
         coJustRun { refreshCoordinator.clearAccount(accountId) }
+        coJustRun { pendingSnapshotActionDao.deleteByAccount(accountId) }
 
         repository.clearOfflineSnapshots(accountId)
 
         coVerify(exactly = 1) { refreshCoordinator.clearAccount(accountId) }
+        coVerify(exactly = 1) { pendingSnapshotActionDao.deleteByAccount(accountId) }
     }
 
     @Test
@@ -72,5 +109,6 @@ class HomeRepositoryRefreshTest {
 
         assertThat(result.isSuccess).isTrue()
         coVerify(exactly = 0) { refreshCoordinator.refresh(any()) }
+        coVerify(exactly = 0) { interactionSyncCoordinator.flushPendingActions(any(), any()) }
     }
 }

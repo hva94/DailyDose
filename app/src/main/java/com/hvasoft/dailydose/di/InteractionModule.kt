@@ -4,10 +4,16 @@ import com.hvasoft.dailydose.domain.interactor.add.CreateSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.add.CreateSnapshotUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCaseImpl
+import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCase
+import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCaseImpl
+import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
+import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCaseImpl
+import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
+import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
 import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.profile.GetUserProfileUseCase
@@ -37,6 +43,21 @@ object InteractionModule {
     fun provideToggleUserLikeUseCase(
         homeRepository: HomeRepository,
     ): ToggleUserLikeUseCase = ToggleUserLikeUseCaseImpl(homeRepository)
+
+    @Provides
+    fun provideSetSnapshotReactionUseCase(
+        homeRepository: HomeRepository,
+    ): SetSnapshotReactionUseCase = SetSnapshotReactionUseCaseImpl(homeRepository)
+
+    @Provides
+    fun provideGetSnapshotRepliesUseCase(
+        homeRepository: HomeRepository,
+    ): GetSnapshotRepliesUseCase = GetSnapshotRepliesUseCaseImpl(homeRepository)
+
+    @Provides
+    fun provideAddSnapshotReplyUseCase(
+        homeRepository: HomeRepository,
+    ): AddSnapshotReplyUseCase = AddSnapshotReplyUseCaseImpl(homeRepository)
 
     @Provides
     fun provideDeleteSnapshotUseCase(

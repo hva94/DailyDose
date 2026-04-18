@@ -26,6 +26,19 @@
     <string name="home_image_unavailable_offline">This image is not available offline yet.</string>
     <string name="home_like_offline_unavailable">Likes are unavailable while viewing offline content.</string>
     <string name="home_delete_offline_unavailable">Deleting snapshots is unavailable while viewing offline content.</string>
+    <string name="home_reply_sheet_title">Replies</string>
+    <string name="home_reply_count_empty">Reply</string>
+    <string name="home_reply_empty_title">No replies yet</string>
+    <string name="home_reply_empty_message">Start the conversation with the first reply.</string>
+    <string name="home_reply_load_error">Could not load replies.</string>
+    <string name="home_reply_hint">Write a reply</string>
+    <string name="home_reply_send">Send</string>
+    <string name="home_reply_sending">Sending…</string>
+    <string name="home_reply_pending_indicator">Pending</string>
+    <string name="home_reply_author_fallback">Unknown user</string>
+    <string name="home_reply_blank_error">Reply cannot be blank.</string>
+    <string name="home_reply_length_error">Reply is too long.</string>
+    <string name="home_reply_character_count">%1$d/%2$d characters</string>
     <string name="home_unknown_error">Unknown error</string>
     <string name="home_offline_banner_title">You are viewing offline content</string>
     <string name="home_offline_banner_message">DailyDose is showing the most recently retained home feed for this account.</string>
@@ -102,6 +115,10 @@
     <plurals name="minutes_date_time_label_text">
         <item quantity="one">%1$d minute ago</item>
         <item quantity="other">%1$d minutes ago</item>
+    </plurals>
+    <plurals name="home_reply_count_label">
+        <item quantity="one">%1$d reply</item>
+        <item quantity="other">%1$d replies</item>
     </plurals>
 
     <string name="hours_date_time_label_text">%1$dh</string>

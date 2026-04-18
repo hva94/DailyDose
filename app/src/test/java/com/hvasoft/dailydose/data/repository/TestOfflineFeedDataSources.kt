@@ -10,10 +10,14 @@ import com.hvasoft.dailydose.data.local.OfflineFeedItemWithAssets
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
 import com.hvasoft.dailydose.data.local.OfflineOwnerProfileCache
-import com.hvasoft.dailydose.data.network.model.User
+import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
+import com.hvasoft.dailydose.data.local.PendingSnapshotActionEntity
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
+import com.hvasoft.dailydose.data.network.model.User
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
+import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReply
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -59,6 +63,13 @@ internal class FakeOfflineFeedItemDao : OfflineFeedItemDao {
                 item.copy(
                     likeCount = likeCount,
                     likedByCurrentUser = likedByCurrentUser,
+                    reactionCount = likeCount,
+                    reactionSummary = emptyMap(),
+                    currentUserReaction = null,
+                    replyCount = 0,
+                    hasPendingReaction = false,
+                    hasPendingReply = false,
+                    legacyLikeCount = null,
                 )
             } else {
                 item
@@ -209,6 +220,12 @@ internal class FakeRemoteDatabaseService(
         )
     }
 
+    override suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int = 1
+
+    override suspend fun getSnapshotReplies(snapshotId: String): List<SnapshotReply> = emptyList()
+
+    override suspend fun addSnapshotReply(snapshotId: String, reply: SnapshotReply): SnapshotReply = reply
+
     override suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int = 1
 
     override suspend fun deleteSnapshot(snapshot: Snapshot): Int = 1
@@ -223,6 +240,57 @@ internal class FakeRemoteDatabaseService(
             snapshotKey = "snapshot-created",
         ),
     )
+}
+
+internal class FakePendingSnapshotActionDao : PendingSnapshotActionDao {
+    private val storedActions = mutableListOf<PendingSnapshotActionEntity>()
+
+    override suspend fun upsert(action: PendingSnapshotActionEntity) {
+        storedActions.removeAll { it.actionId == action.actionId }
+        storedActions += action
+    }
+
+    override suspend fun upsertAll(actions: List<PendingSnapshotActionEntity>) {
+        actions.forEach { action ->
+            upsert(action)
+        }
+    }
+
+    override suspend fun getByAccount(accountId: String): List<PendingSnapshotActionEntity> =
+        storedActions.filter { it.accountId == accountId }.sortedBy(PendingSnapshotActionEntity::createdAt)
+
+    override suspend fun getBySnapshot(accountId: String, snapshotId: String): List<PendingSnapshotActionEntity> =
+        storedActions.filter { it.accountId == accountId && it.snapshotId == snapshotId }
+            .sortedBy(PendingSnapshotActionEntity::createdAt)
+
+    override suspend fun updateState(
+        actionId: String,
+        queueState: PendingSnapshotActionQueueState,
+        lastAttemptAt: Long?,
+        attemptCount: Int,
+    ) {
+        val updated = storedActions.map { action ->
+            if (action.actionId == actionId) {
+                action.copy(
+                    queueState = queueState,
+                    lastAttemptAt = lastAttemptAt,
+                    attemptCount = attemptCount,
+                )
+            } else {
+                action
+            }
+        }
+        storedActions.clear()
+        storedActions += updated
+    }
+
+    override suspend fun deleteById(actionId: String) {
+        storedActions.removeAll { it.actionId == actionId }
+    }
+
+    override suspend fun deleteByAccount(accountId: String) {
+        storedActions.removeAll { it.accountId == accountId }
+    }
 }
 
 private class StaticPagingSource<T : Any>(

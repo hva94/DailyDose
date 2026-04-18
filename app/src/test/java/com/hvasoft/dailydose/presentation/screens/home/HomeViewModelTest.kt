@@ -1,19 +1,25 @@
 package com.hvasoft.dailydose.presentation.screens.home
 
 import androidx.paging.ExperimentalPagingApi
+import androidx.paging.PagingData
 import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseUser
 import com.hvasoft.dailydose.MainDispatcherRule
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
+import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCase
 import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
+import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
-import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
+import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
 import com.hvasoft.dailydose.domain.model.HomeFeedAvailabilityMode
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReply
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -39,10 +45,12 @@ class HomeViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val accountId = "user-123"
-    private lateinit var toggleUserLikeUseCase: ToggleUserLikeUseCase
+    private lateinit var getSnapshotRepliesUseCase: GetSnapshotRepliesUseCase
+    private lateinit var addSnapshotReplyUseCase: AddSnapshotReplyUseCase
+    private lateinit var setSnapshotReactionUseCase: SetSnapshotReactionUseCase
     private lateinit var deleteSnapshotUseCase: DeleteSnapshotUseCase
     private lateinit var syncStateFlow: MutableStateFlow<HomeFeedSyncState>
-    private lateinit var pagingFlow: Flow<androidx.paging.PagingData<Snapshot>>
+    private lateinit var pagingFlow: Flow<PagingData<Snapshot>>
     private var refreshResult: Result<Unit> = Result.success(Unit)
     private lateinit var authSessionProvider: FakeAuthSessionProvider
     private lateinit var viewModel: HomeViewModel
@@ -53,6 +61,9 @@ class HomeViewModelTest {
     fun setUp() {
         val currentUser = mockk<FirebaseUser>()
         every { currentUser.uid } returns accountId
+        every { currentUser.displayName } returns "Henry"
+        every { currentUser.email } returns "henry@example.com"
+        every { currentUser.photoUrl } returns null
         authSessionProvider = FakeAuthSessionProvider(currentUser)
 
         syncStateFlow = MutableStateFlow(
@@ -63,16 +74,18 @@ class HomeViewModelTest {
                 retainedItemCount = 3,
             ),
         )
-        pagingFlow = flowOf(androidx.paging.PagingData.empty())
-        toggleUserLikeUseCase = mockk(relaxed = true)
+        pagingFlow = flowOf(PagingData.empty())
+        getSnapshotRepliesUseCase = mockk()
+        addSnapshotReplyUseCase = mockk()
+        setSnapshotReactionUseCase = mockk(relaxed = true)
         deleteSnapshotUseCase = mockk(relaxed = true)
 
         viewModel = HomeViewModel(
             dispatcherIO = mainDispatcherRule.dispatcher,
             getSnapshotsUseCase = @OptIn(ExperimentalPagingApi::class) object : GetSnapshotsUseCase {
-                override fun invoke(): Flow<androidx.paging.PagingData<Snapshot>> = pagingFlow
+                override fun invoke(): Flow<PagingData<Snapshot>> = pagingFlow
 
-                override fun observeSyncState(): kotlinx.coroutines.flow.Flow<HomeFeedSyncState> = syncStateFlow
+                override fun observeSyncState(): Flow<HomeFeedSyncState> = syncStateFlow
 
                 override suspend fun refresh(): Result<Unit> {
                     delay(refreshDelayMs)
@@ -82,10 +95,12 @@ class HomeViewModelTest {
 
                 override suspend fun clearOfflineSnapshots(accountId: String) = Unit
             },
+            getSnapshotRepliesUseCase = getSnapshotRepliesUseCase,
+            addSnapshotReplyUseCase = addSnapshotReplyUseCase,
             cachePostedSnapshotUseCase = object : CachePostedSnapshotUseCase {
                 override suspend fun invoke(snapshot: Snapshot) = Unit
             },
-            toggleUserLikeUseCase = toggleUserLikeUseCase,
+            setSnapshotReactionUseCase = setSnapshotReactionUseCase,
             deleteSnapshotUseCase = deleteSnapshotUseCase,
             authSessionProvider = authSessionProvider,
         )
@@ -100,6 +115,7 @@ class HomeViewModelTest {
 
         assertThat(viewModel.uiState.value.availabilityMode).isEqualTo(HomeFeedAvailabilityMode.OFFLINE_RETAINED)
         assertThat(viewModel.uiState.value.actionPolicy).isEqualTo(HomeFeedActionPolicy.READ_ONLY_OFFLINE)
+        assertThat(viewModel.uiState.value.canQueueInteractions).isTrue()
         collector.cancel()
     }
 
@@ -116,15 +132,87 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `setLikeSnapshot blocks remote mutation while offline`() = runTest {
-        val event = async { viewModel.events.first() }
+    fun `setSnapshotReaction delegates to the new use case`() = runTest {
+        val snapshot = Snapshot(snapshotKey = "snapshot-1")
+
+        viewModel.setSnapshotReaction(snapshot, "\uD83D\uDD25")
         advanceUntilIdle()
 
-        viewModel.setLikeSnapshot(Snapshot(snapshotKey = "snapshot-1"), isChecked = true)
+        coVerify(exactly = 1) { setSnapshotReactionUseCase.invoke(snapshot, "\uD83D\uDD25") }
+    }
+
+    @Test
+    fun `openReplies loads reply sheet content`() = runTest {
+        val snapshot = Snapshot(snapshotKey = "snapshot-1", title = "Hello")
+        val replies = listOf(
+            SnapshotReply(
+                replyId = "reply-1",
+                snapshotId = "snapshot-1",
+                idUserOwner = accountId,
+                userName = "Henry",
+                userPhotoUrl = null,
+                text = "First",
+                dateTime = 100L,
+                deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+            ),
+        )
+        coEvery { getSnapshotRepliesUseCase.invoke(snapshot) } returns Result.success(replies)
+
+        viewModel.openReplies(snapshot)
         advanceUntilIdle()
 
-        assertThat(event.await()).isEqualTo(R.string.home_like_offline_unavailable)
-        coVerify(exactly = 0) { toggleUserLikeUseCase.invoke(any(), any()) }
+        assertThat(viewModel.replySheetState.value.isVisible).isTrue()
+        assertThat(viewModel.replySheetState.value.isLoading).isFalse()
+        assertThat(viewModel.replySheetState.value.replies).isEqualTo(replies)
+        assertThat(viewModel.replySheetState.value.errorMessageRes).isNull()
+    }
+
+    @Test
+    fun `openReplies exposes the empty state when no replies are returned`() = runTest {
+        val snapshot = Snapshot(snapshotKey = "snapshot-1", title = "Hello")
+        coEvery { getSnapshotRepliesUseCase.invoke(snapshot) } returns Result.success(emptyList())
+
+        viewModel.openReplies(snapshot)
+        advanceUntilIdle()
+
+        assertThat(viewModel.replySheetState.value.isVisible).isTrue()
+        assertThat(viewModel.replySheetState.value.isEmpty).isTrue()
+        assertThat(viewModel.replySheetState.value.errorMessageRes).isNull()
+    }
+
+    @Test
+    fun `openReplies keeps the sheet open and shows a retryable load error`() = runTest {
+        val snapshot = Snapshot(snapshotKey = "snapshot-1", title = "Hello")
+        coEvery {
+            getSnapshotRepliesUseCase.invoke(snapshot)
+        } returns Result.failure(IllegalStateException("offline"))
+
+        viewModel.openReplies(snapshot)
+        advanceUntilIdle()
+
+        assertThat(viewModel.replySheetState.value.isVisible).isTrue()
+        assertThat(viewModel.replySheetState.value.isLoading).isFalse()
+        assertThat(viewModel.replySheetState.value.errorMessageRes).isEqualTo(R.string.home_reply_load_error)
+    }
+
+    @Test
+    fun `submitReply maps blank validation failure to composer feedback`() = runTest {
+        val snapshot = Snapshot(snapshotKey = "snapshot-1")
+        coEvery {
+            getSnapshotRepliesUseCase.invoke(snapshot)
+        } returns Result.success(emptyList())
+        coEvery {
+            addSnapshotReplyUseCase.invoke(snapshot, "   ")
+        } returns Result.failure(IllegalArgumentException("blank"))
+
+        viewModel.openReplies(snapshot)
+        advanceUntilIdle()
+        viewModel.updateReplyComposer("   ")
+        viewModel.submitReply()
+        advanceUntilIdle()
+
+        assertThat(viewModel.replySheetState.value.composerMessageRes).isEqualTo(R.string.home_reply_blank_error)
+        assertThat(viewModel.replySheetState.value.isSubmitting).isFalse()
     }
 
     @Test

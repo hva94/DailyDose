@@ -8,6 +8,13 @@ data class Snapshot(
     val photoUrl: String? = null,
     val likeList: Map<String, Boolean>? = null,
     val idUserOwner: String? = null,
+    val reactionCount: Int = 0,
+    val reactionSummary: Map<String, Int> = emptyMap(),
+    val replyCount: Int = 0,
+    val currentUserReaction: String? = null,
+    val hasPendingReaction: Boolean = false,
+    val hasPendingReply: Boolean = false,
+    val legacyLikeCount: Int? = null,
 
     val paginationId: Int = 0,
     var snapshotKey: String = "",

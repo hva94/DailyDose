@@ -106,7 +106,7 @@ class HostActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        updaterPrefs = getSharedPreferences(UPDATER_PREFS_NAME, Context.MODE_PRIVATE)
+        updaterPrefs = getSharedPreferences(UPDATER_PREFS_NAME, MODE_PRIVATE)
         setContent {
             DailyDoseTheme {
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -248,6 +248,7 @@ class HostActivity : ComponentActivity() {
         firebaseAuth = FirebaseAuth.getInstance()
         authListener = FirebaseAuth.AuthStateListener { auth ->
             if (auth.currentUser == null) {
+                homeViewModel.closeReplies()
                 lastAuthenticatedUserId?.let(homeViewModel::clearOfflineSnapshots)
                 lastAuthenticatedUserId = null
                 profileViewModel.clearProfileState()
@@ -274,6 +275,7 @@ class HostActivity : ComponentActivity() {
                 val currentUserId = currentUser.uid
                 val previousUserId = lastAuthenticatedUserId
                 if (previousUserId != null && previousUserId != currentUserId) {
+                    homeViewModel.closeReplies()
                     homeViewModel.clearOfflineSnapshots(previousUserId)
                 }
                 lastAuthenticatedUserId = currentUserId
@@ -342,6 +344,9 @@ class HostActivity : ComponentActivity() {
     private fun onDestinationSelected(destination: MainDestination) {
         val wasSelected = selectedDestination == destination
         selectedDestination = destination
+        if (destination != MainDestination.HOME) {
+            homeViewModel.closeReplies()
+        }
 
         when (destination) {
             MainDestination.HOME -> {

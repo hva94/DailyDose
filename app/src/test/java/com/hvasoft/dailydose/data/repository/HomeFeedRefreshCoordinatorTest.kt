@@ -6,14 +6,15 @@ import com.google.common.truth.Truth.assertThat
 import com.hvasoft.dailydose.MainDispatcherRule
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
-import com.hvasoft.dailydose.data.local.HomeFeedTransactionRunner
 import com.hvasoft.dailydose.data.local.OfflineFeedItemEntity
 import com.hvasoft.dailydose.data.local.OfflineItemAvailabilityStatus
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetType
 import com.hvasoft.dailydose.data.local.ProfileLocalCache
+import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.Snapshot
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -284,6 +285,32 @@ class HomeFeedRefreshCoordinatorTest {
         assertThat(File(staleAssetPath!!).exists()).isFalse()
     }
 
+    @Test
+    fun `refresh keeps snapshots available when owner profile lookups fail`() = runTest {
+        val mediaUrl = newMediaUrl("snapshot-owner-fallback.jpg")
+        val remoteDatabaseService = mockk<RemoteDatabaseService>()
+        coEvery { remoteDatabaseService.getSnapshotsOnce() } returns listOf(
+            snapshot(
+                snapshotId = "snapshot-1",
+                photoUrl = mediaUrl,
+                ownerUserId = "owner-1",
+                publishedAt = 100L,
+            ),
+        )
+        coEvery {
+            remoteDatabaseService.getUsersOnce(setOf("owner-1"))
+        } throws IllegalStateException("permission denied")
+
+        val coordinator = createCoordinator(remoteDatabaseService = remoteDatabaseService)
+
+        val result = coordinator.refresh(accountId)
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(offlineFeedItemDao.storedItems(accountId)).hasSize(1)
+        assertThat(feedSyncStateDao.currentState(accountId)?.lastRefreshResult)
+            .isEqualTo(HomeFeedLastRefreshResult.SUCCESS)
+    }
+
     private fun createCoordinator(
         snapshots: List<Snapshot>,
         namesByUserId: Map<String, String> = emptyMap(),
@@ -294,6 +321,19 @@ class HomeFeedRefreshCoordinatorTest {
             namesByUserId = namesByUserId,
             avatarsByUserId = avatarsByUserId,
         ),
+        transactionRunner = { block -> block() },
+        offlineFeedItemDao = offlineFeedItemDao,
+        offlineMediaAssetDao = offlineMediaAssetDao,
+        feedSyncStateDao = feedSyncStateDao,
+        feedAssetStorage = assetStorage,
+        profileLocalCache = profileLocalCache,
+        dispatcherIO = mainDispatcherRule.dispatcher,
+    )
+
+    private fun createCoordinator(
+        remoteDatabaseService: RemoteDatabaseService,
+    ): HomeFeedRefreshCoordinator = HomeFeedRefreshCoordinator(
+        remoteDatabaseService = remoteDatabaseService,
         transactionRunner = { block -> block() },
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,

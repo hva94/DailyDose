@@ -10,18 +10,23 @@ import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.network.model.SnapshotDTO
+import com.hvasoft.dailydose.data.network.model.SnapshotReactionDTO
+import com.hvasoft.dailydose.data.network.model.SnapshotReplyDTO
 import com.hvasoft.dailydose.data.network.model.User
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReply
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.util.logging.Logger
 import javax.inject.Inject
 
 class RemoteDatabaseServiceImpl @Inject constructor(
@@ -31,40 +36,38 @@ class RemoteDatabaseServiceImpl @Inject constructor(
     private val authSessionProvider: AuthSessionProvider,
 ) : RemoteDatabaseService {
 
-    override fun getSnapshots(): Flow<List<Snapshot>> {
-        return callbackFlow {
-            val listener = object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    if (snapshot.exists()) {
-                        val snapshotsWithKeys = snapshot.children
-                            .mapNotNull { child ->
-                                child.key?.let { key ->
-                                    Pair(key, child.getValue(Snapshot::class.java))
+    override fun getSnapshots(): Flow<List<Snapshot>> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val currentUserId = authSessionProvider.currentUserIdOrNull()
+                val snapshots = if (snapshot.exists()) {
+                    snapshot.children
+                        .mapNotNull { child ->
+                            runCatching { child.toDomainSnapshot(currentUserId) }
+                                .onFailure { failure ->
+                                    logger.warning(
+                                        "Skipping malformed snapshot ${child.key.orEmpty()}: ${failure.message}",
+                                    )
                                 }
-                            }
-                            .filter { it.second != null }
-                            .map { pair ->
-                                pair.second?.snapshotKey = pair.first
-                                pair
-                            }
-                            .sortedByDescending { it.second?.dateTime }
-
-                        trySend(snapshotsWithKeys.map { it.second!! })
-                    } else {
-                        trySend(emptyList())
-                    }
+                                .getOrNull()
+                        }
+                        .sortedByDescending { it.dateTime }
+                } else {
+                    emptyList()
                 }
-
-                override fun onCancelled(error: DatabaseError) {
-                    close(error.toException())
-                }
+                trySend(snapshots)
             }
-            snapshotsDatabase.addValueEventListener(listener)
-            awaitClose { snapshotsDatabase.removeEventListener(listener) }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
         }
+        snapshotsDatabase.addValueEventListener(listener)
+        awaitClose { snapshotsDatabase.removeEventListener(listener) }
     }
 
     override suspend fun getSnapshotsOnce(): List<Snapshot> = withContext(Dispatchers.IO) {
+        val currentUserId = authSessionProvider.currentUserIdOrNull()
         val snapshot = snapshotsDatabase.get().await()
         if (!snapshot.exists()) {
             return@withContext emptyList()
@@ -72,27 +75,30 @@ class RemoteDatabaseServiceImpl @Inject constructor(
 
         snapshot.children
             .mapNotNull { child ->
-                child.key?.let { key ->
-                    child.getValue(Snapshot::class.java)?.apply {
-                        snapshotKey = key
+                runCatching { child.toDomainSnapshot(currentUserId) }
+                    .onFailure { failure ->
+                        logger.warning(
+                            "Skipping malformed snapshot ${child.key.orEmpty()} during one-shot fetch: ${failure.message}",
+                        )
                     }
-                }
+                    .getOrNull()
             }
             .sortedByDescending { it.dateTime }
     }
 
-    override fun getUserPhotoUrl(idUser: String?): Flow<String> {
-        return callbackFlow {
-            val listener = object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    trySend(if (snapshot.exists()) snapshot.getValue(String::class.java) ?: "" else "")
-                }
-                override fun onCancelled(error: DatabaseError) { close(error.toException()) }
+    override fun getUserPhotoUrl(idUser: String?): Flow<String> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(if (snapshot.exists()) snapshot.getValue(String::class.java) ?: "" else "")
             }
-            usersDatabase.child(idUser ?: "").child(Constants.PHOTO_URL_PATH)
-                .addValueEventListener(listener)
-            awaitClose { usersDatabase.removeEventListener(listener) }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
         }
+        usersDatabase.child(idUser ?: "").child(Constants.PHOTO_URL_PATH)
+            .addValueEventListener(listener)
+        awaitClose { usersDatabase.removeEventListener(listener) }
     }
 
     override suspend fun getUserPhotoUrlOnce(idUser: String?): String = withContext(Dispatchers.IO) {
@@ -103,18 +109,19 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             .orEmpty()
     }
 
-    override fun getUserName(idUser: String?): Flow<String> {
-        return callbackFlow {
-            val listener = object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    trySend(if (snapshot.exists()) snapshot.getValue(String::class.java) ?: "" else "")
-                }
-                override fun onCancelled(error: DatabaseError) { close(error.toException()) }
+    override fun getUserName(idUser: String?): Flow<String> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(if (snapshot.exists()) snapshot.getValue(String::class.java) ?: "" else "")
             }
-            usersDatabase.child(idUser ?: "").child(Constants.USERNAME_PATH)
-                .addValueEventListener(listener)
-            awaitClose { usersDatabase.removeEventListener(listener) }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
         }
+        usersDatabase.child(idUser ?: "").child(Constants.USERNAME_PATH)
+            .addValueEventListener(listener)
+        awaitClose { usersDatabase.removeEventListener(listener) }
     }
 
     override suspend fun getUserNameOnce(idUser: String?): String = withContext(Dispatchers.IO) {
@@ -142,18 +149,120 @@ class RemoteDatabaseServiceImpl @Inject constructor(
         }
     }
 
-    override suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int {
+    override suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int = withContext(Dispatchers.IO) {
         val currentUserId = authSessionProvider.requireCurrentUserId()
-        val userLikeReference = snapshotsDatabase
-            .child(snapshot.snapshotKey)
-            .child(Constants.LIKE_LIST_PROPERTY)
-            .child(currentUserId)
-        return if (userLikeReference.key != null) {
-            if (isChecked) userLikeReference.setValue(true)
-            else userLikeReference.setValue(null)
-            1
-        } else 0
+        val snapshotReference = snapshotsDatabase.child(snapshotId)
+        val snapshotState = snapshotReference.get().await()
+        val existingReactions = snapshotState.buildLegacyAwareReactionMap()
+        val now = System.currentTimeMillis()
+        val updatedReactions = existingReactions.toMutableMap()
+        val sanitizedEmoji = emoji?.takeIf(String::isNotBlank)
+        val resolvedEmoji = when {
+            sanitizedEmoji == null -> null
+            updatedReactions[currentUserId]?.emoji == sanitizedEmoji -> null
+            else -> sanitizedEmoji
+        }
+
+        if (resolvedEmoji == null) {
+            snapshotReference.child(Constants.REACTIONS_PATH).child(currentUserId).setValue(null).await()
+            updatedReactions.remove(currentUserId)
+        } else {
+            val updatedReaction = SnapshotReactionDTO(
+                userId = currentUserId,
+                emoji = resolvedEmoji,
+                createdAt = updatedReactions[currentUserId]?.createdAt ?: now,
+                updatedAt = now,
+            )
+            snapshotReference.child(Constants.REACTIONS_PATH).child(currentUserId)
+                .setValue(updatedReaction)
+                .await()
+            updatedReactions[currentUserId] = updatedReaction
+        }
+
+        if (snapshotState.child(Constants.LIKE_LIST_PROPERTY).hasChild(currentUserId)) {
+            snapshotReference.child(Constants.LIKE_LIST_PROPERTY).child(currentUserId).setValue(null).await()
+        }
+
+        val summary = updatedReactions.values
+            .groupingBy(SnapshotReactionDTO::emoji)
+            .eachCount()
+            .filterValues { it > 0 }
+        snapshotReference.child(Constants.REACTION_SUMMARY_PROPERTY).setValue(summary).await()
+        snapshotReference.child(Constants.REACTION_COUNT_PROPERTY).setValue(updatedReactions.size).await()
+        1
     }
+
+    override suspend fun getSnapshotReplies(snapshotId: String): List<SnapshotReply> = withContext(Dispatchers.IO) {
+        val repliesSnapshot = snapshotsDatabase.child(snapshotId).child(Constants.REPLIES_PATH).get().await()
+        val replies = repliesSnapshot.children
+            .mapNotNull { child ->
+                val dto = child.getValue(SnapshotReplyDTO::class.java) ?: return@mapNotNull null
+                SnapshotReply(
+                    replyId = child.key.orEmpty(),
+                    snapshotId = snapshotId,
+                    idUserOwner = dto.idUserOwner,
+                    userName = dto.userName.ifBlank { "Unknown user" },
+                    userPhotoUrl = dto.userPhotoUrl.takeIf(String::isNotBlank),
+                    text = dto.text,
+                    dateTime = dto.dateTime,
+                    deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+                )
+            }
+        val missingProfileUserIds = replies
+            .filter { it.userName.isBlank() || it.userPhotoUrl.isNullOrBlank() }
+            .map(SnapshotReply::idUserOwner)
+            .filter(String::isNotBlank)
+            .toSet()
+        val usersById = if (missingProfileUserIds.isEmpty()) {
+            emptyMap()
+        } else {
+            runCatching { getUsersOnce(missingProfileUserIds) }
+                .getOrElse {
+                    logger.warning(
+                        "Failed to enrich reply authors for snapshot $snapshotId: ${it.message}",
+                    )
+                    emptyMap()
+                }
+        }
+
+        replies.map { reply ->
+            val user = usersById[reply.idUserOwner]
+            reply.copy(
+                userName = reply.userName.ifBlank { user?.userName.orEmpty() }.ifBlank { "Unknown user" },
+                userPhotoUrl = reply.userPhotoUrl
+                    ?.takeIf(String::isNotBlank)
+                    ?: user?.photoUrl?.takeIf(String::isNotBlank),
+            )
+        }.sortedWith(compareBy<SnapshotReply> { it.dateTime }.thenBy { it.replyId })
+    }
+
+    override suspend fun addSnapshotReply(snapshotId: String, reply: SnapshotReply): SnapshotReply = withContext(Dispatchers.IO) {
+        val snapshotReference = snapshotsDatabase.child(snapshotId)
+        val repliesReference = snapshotReference.child(Constants.REPLIES_PATH)
+        val replyId = repliesReference.push().key
+            ?: throw IllegalStateException("Failed to create reply id")
+
+        val dto = SnapshotReplyDTO(
+            idUserOwner = reply.idUserOwner,
+            userName = reply.userName,
+            userPhotoUrl = reply.userPhotoUrl.orEmpty(),
+            text = reply.text,
+            dateTime = reply.dateTime,
+        )
+        repliesReference.child(replyId).setValue(dto).await()
+        val replyCount = repliesReference.get().await().childrenCount.toInt()
+        snapshotReference.child(Constants.REPLY_COUNT_PROPERTY).setValue(replyCount).await()
+        reply.copy(
+            replyId = replyId,
+            deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+        )
+    }
+
+    override suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int =
+        setSnapshotReaction(
+            snapshotId = snapshot.snapshotKey,
+            emoji = if (isChecked) Constants.DEFAULT_HEART_REACTION else null,
+        )
 
     override suspend fun deleteSnapshot(snapshot: Snapshot): Int {
         if (snapshot.snapshotKey.isNotEmpty()) {
@@ -199,6 +308,9 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                 title = title,
                 dateTime = System.currentTimeMillis(),
                 photoUrl = downloadUri.toString(),
+                reactionCount = 0,
+                reactionSummary = emptyMap(),
+                replyCount = 0,
             )
             snapshotsDatabase.child(key).setValue(dto).await()
             CreateSnapshotResult.Success(
@@ -210,6 +322,9 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                     snapshotKey = key,
                     userName = currentUser.displayName,
                     userPhotoUrl = currentUser.photoUrl,
+                    reactionCount = 0,
+                    reactionSummary = emptyMap(),
+                    replyCount = 0,
                     likeCount = "0",
                     syncedAt = dto.dateTime,
                 ),
@@ -219,5 +334,93 @@ class RemoteDatabaseServiceImpl @Inject constructor(
         } catch (_: Exception) {
             CreateSnapshotResult.SaveFailed
         }
+    }
+
+    private fun DataSnapshot.toDomainSnapshot(currentUserId: String?): Snapshot? {
+        val snapshotKey = key ?: return null
+        val title = child("title").getValue(String::class.java).orEmpty()
+        val dateTime = child("dateTime").getValue(Long::class.java) ?: 0L
+        val photoUrl = child("photoUrl").getValue(String::class.java).orEmpty()
+        val idUserOwner = child("idUserOwner").getValue(String::class.java).orEmpty()
+        val likeList = child(Constants.LIKE_LIST_PROPERTY).children
+            .mapNotNull { likeEntry ->
+                likeEntry.key?.let { userId ->
+                    userId to (likeEntry.getValue(Boolean::class.java) ?: true)
+                }
+            }
+            .toMap()
+        val storedReactionSummary = child(Constants.REACTION_SUMMARY_PROPERTY).children
+            .mapNotNull { summaryEntry ->
+                val emoji = summaryEntry.key ?: return@mapNotNull null
+                val count = summaryEntry.getValue(Long::class.java)?.toInt()
+                    ?: summaryEntry.getValue(Int::class.java)
+                    ?: return@mapNotNull null
+                emoji to count
+            }
+            .toMap()
+        val storedReactionCount = child(Constants.REACTION_COUNT_PROPERTY).getValue(Long::class.java)?.toInt()
+            ?: child(Constants.REACTION_COUNT_PROPERTY).getValue(Int::class.java)
+            ?: 0
+        val storedReplyCount = child(Constants.REPLY_COUNT_PROPERTY).getValue(Long::class.java)?.toInt()
+            ?: child(Constants.REPLY_COUNT_PROPERTY).getValue(Int::class.java)
+            ?: 0
+        val reactions = buildLegacyAwareReactionMap()
+        val derivedSummary = reactions.values.groupingBy(SnapshotReactionDTO::emoji).eachCount()
+        val resolvedSummary = when {
+            storedReactionSummary.isNotEmpty() -> storedReactionSummary.filterValues { it > 0 }
+            derivedSummary.isNotEmpty() -> derivedSummary
+            likeList.isNotEmpty() -> mapOf(Constants.DEFAULT_HEART_REACTION to likeList.size)
+            else -> emptyMap()
+        }
+        val resolvedReactionCount = when {
+            storedReactionCount > 0 -> storedReactionCount
+            resolvedSummary.isNotEmpty() -> resolvedSummary.values.sum()
+            else -> likeList.size
+        }
+        val currentUserReaction = currentUserId?.let { userId -> reactions[userId]?.emoji }
+        val derivedReplyCount = child(Constants.REPLIES_PATH).childrenCount.toInt()
+
+        return Snapshot(
+            title = title,
+            dateTime = dateTime,
+            photoUrl = photoUrl,
+            likeList = likeList,
+            idUserOwner = idUserOwner,
+            reactionCount = resolvedReactionCount,
+            reactionSummary = resolvedSummary,
+            replyCount = maxOf(storedReplyCount, derivedReplyCount),
+            currentUserReaction = currentUserReaction,
+            legacyLikeCount = likeList.size.takeIf { it > 0 },
+            snapshotKey = snapshotKey,
+            isLikedByCurrentUser = currentUserReaction != null,
+            likeCount = resolvedReactionCount.toString(),
+        )
+    }
+
+    private fun DataSnapshot.buildLegacyAwareReactionMap(): Map<String, SnapshotReactionDTO> {
+        val migratedReactions = linkedMapOf<String, SnapshotReactionDTO>()
+        val fallbackCreatedAt = child("dateTime").getValue(Long::class.java) ?: 0L
+
+        child(Constants.LIKE_LIST_PROPERTY).children.forEach { likeEntry ->
+            val userId = likeEntry.key ?: return@forEach
+            migratedReactions[userId] = SnapshotReactionDTO(
+                userId = userId,
+                emoji = Constants.DEFAULT_HEART_REACTION,
+                createdAt = fallbackCreatedAt,
+                updatedAt = fallbackCreatedAt,
+            )
+        }
+
+        child(Constants.REACTIONS_PATH).children.forEach { reactionEntry ->
+            val dto = reactionEntry.getValue(SnapshotReactionDTO::class.java) ?: SnapshotReactionDTO()
+            val userId = dto.userId.ifBlank { reactionEntry.key.orEmpty() }
+            if (userId.isBlank()) return@forEach
+            migratedReactions[userId] = dto.copy(userId = userId)
+        }
+        return migratedReactions
+    }
+
+    private companion object {
+        val logger: Logger = Logger.getLogger(RemoteDatabaseServiceImpl::class.java.name)
     }
 }
