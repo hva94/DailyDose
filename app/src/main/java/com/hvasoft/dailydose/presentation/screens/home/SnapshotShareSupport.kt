@@ -20,7 +20,28 @@ import java.io.FileOutputStream
 private const val FileProviderAuthority = "com.hvasoft.fileprovider"
 private const val SharedImagesDirectory = "shared_images"
 
-internal suspend fun shareSnapshot(
+internal fun shareSnapshotIfAvailable(
+    context: Context,
+    snapshot: Snapshot,
+    hasFullAccess: Boolean,
+    onShowMessage: (Int) -> Unit,
+    launch: (suspend () -> Unit) -> Unit,
+) {
+    if (snapshot.canShareImage(hasFullAccess).not()) {
+        onShowMessage(R.string.home_share_image_unavailable_offline)
+        return
+    }
+
+    launch {
+        runCatching {
+            shareSnapshot(context, snapshot, hasFullAccess)
+        }.onFailure {
+            onShowMessage(R.string.home_share_image_error)
+        }
+    }
+}
+
+private suspend fun shareSnapshot(
     context: Context,
     snapshot: Snapshot,
     allowRemoteFallback: Boolean,
@@ -117,8 +138,10 @@ private suspend fun writeRemoteImageToShareFile(
     val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
         ?: error("Unable to decode image")
 
-    FileOutputStream(targetFile).use { output ->
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
+    withContext(Dispatchers.IO) {
+        FileOutputStream(targetFile).use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
+        }
     }
 }
 

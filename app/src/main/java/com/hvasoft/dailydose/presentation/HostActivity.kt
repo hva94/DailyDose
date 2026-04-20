@@ -57,7 +57,7 @@ import com.hvasoft.dailydose.data.local.ProfileLocalCache
 import com.hvasoft.dailydose.data.network.model.User
 import com.hvasoft.dailydose.presentation.screens.add.AddRoute
 import com.hvasoft.dailydose.presentation.screens.add.AddViewModel
-import com.hvasoft.dailydose.presentation.screens.home.HomeRoute
+import com.hvasoft.dailydose.presentation.screens.home.HomeScreen
 import com.hvasoft.dailydose.presentation.screens.home.HomeViewModel
 import com.hvasoft.dailydose.presentation.screens.profile.ProfileRoute
 import com.hvasoft.dailydose.presentation.screens.profile.ProfileViewModel
@@ -132,7 +132,7 @@ class HostActivity : ComponentActivity() {
                     snackbarHostState = snackbarHostState,
                     onDestinationSelected = ::onDestinationSelected,
                     homeContent = { innerPadding ->
-                        HomeRoute(
+                        HomeScreen(
                             viewModel = homeViewModel,
                             contentPadding = innerPadding,
                             scrollSignal = homeScrollSignal,
