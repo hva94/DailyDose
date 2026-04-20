@@ -10,6 +10,8 @@ import com.hvasoft.dailydose.data.local.OfflineFeedItemWithAssets
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
 import com.hvasoft.dailydose.data.local.OfflineOwnerProfileCache
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyDao
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyEntity
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionEntity
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
@@ -18,6 +20,7 @@ import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.model.SnapshotReply
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -199,6 +202,7 @@ internal class FakeRemoteDatabaseService(
     private val snapshots: List<Snapshot> = emptyList(),
     private val namesByUserId: Map<String, String> = emptyMap(),
     private val avatarsByUserId: Map<String, String> = emptyMap(),
+    private val repliesBySnapshotId: Map<String, List<SnapshotReply>> = emptyMap(),
 ) : RemoteDatabaseService {
     override fun getSnapshots(): Flow<List<Snapshot>> = flowOf(snapshots)
 
@@ -222,7 +226,8 @@ internal class FakeRemoteDatabaseService(
 
     override suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int = 1
 
-    override suspend fun getSnapshotReplies(snapshotId: String): List<SnapshotReply> = emptyList()
+    override suspend fun getSnapshotReplies(snapshotId: String): List<SnapshotReply> =
+        repliesBySnapshotId[snapshotId].orEmpty()
 
     override suspend fun addSnapshotReply(snapshotId: String, reply: SnapshotReply): SnapshotReply = reply
 
@@ -291,6 +296,57 @@ internal class FakePendingSnapshotActionDao : PendingSnapshotActionDao {
     override suspend fun deleteByAccount(accountId: String) {
         storedActions.removeAll { it.accountId == accountId }
     }
+}
+
+internal class FakeOfflineSnapshotReplyDao : OfflineSnapshotReplyDao {
+    private val storedReplies = mutableListOf<OfflineSnapshotReplyEntity>()
+
+    override suspend fun getBySnapshot(accountId: String, snapshotId: String): List<OfflineSnapshotReplyEntity> =
+        storedReplies
+            .filter { it.accountId == accountId && it.snapshotId == snapshotId }
+            .sortedWith(compareBy<OfflineSnapshotReplyEntity> { it.dateTime }.thenBy { it.replyId })
+
+    override suspend fun upsertAll(items: List<OfflineSnapshotReplyEntity>) {
+        items.forEach { newReply ->
+            storedReplies.removeAll {
+                it.accountId == newReply.accountId &&
+                    it.snapshotId == newReply.snapshotId &&
+                    it.replyId == newReply.replyId
+            }
+            storedReplies += newReply
+        }
+    }
+
+    override suspend fun deleteBySnapshotAndDeliveryState(
+        accountId: String,
+        snapshotId: String,
+        deliveryState: SnapshotReplyDeliveryState,
+    ) {
+        storedReplies.removeAll {
+            it.accountId == accountId &&
+                it.snapshotId == snapshotId &&
+                it.deliveryState == deliveryState
+        }
+    }
+
+    override suspend fun deleteByReplyId(accountId: String, snapshotId: String, replyId: String) {
+        storedReplies.removeAll {
+            it.accountId == accountId &&
+                it.snapshotId == snapshotId &&
+                it.replyId == replyId
+        }
+    }
+
+    override suspend fun deleteBySnapshot(accountId: String, snapshotId: String) {
+        storedReplies.removeAll { it.accountId == accountId && it.snapshotId == snapshotId }
+    }
+
+    override suspend fun deleteByAccount(accountId: String) {
+        storedReplies.removeAll { it.accountId == accountId }
+    }
+
+    fun storedReplies(accountId: String, snapshotId: String): List<OfflineSnapshotReplyEntity> =
+        storedReplies.filter { it.accountId == accountId && it.snapshotId == snapshotId }
 }
 
 private class StaticPagingSource<T : Any>(

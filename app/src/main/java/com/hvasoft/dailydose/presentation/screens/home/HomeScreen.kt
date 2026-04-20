@@ -97,9 +97,9 @@ import com.hvasoft.dailydose.presentation.screens.common.DefaultImageAspectRatio
 import com.hvasoft.dailydose.presentation.screens.common.ShimmerPlaceholder
 import com.hvasoft.dailydose.presentation.screens.common.calculateClampedAspectRatio
 import com.hvasoft.dailydose.presentation.screens.common.formatRelativeTime
-import com.hvasoft.dailydose.presentation.screens.common.formatReplyCount
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
 import com.hvasoft.dailydose.presentation.theme.PrimaryLight
+import com.hvasoft.dailydose.presentation.theme.Unselected
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -438,7 +438,6 @@ private fun SnapshotCard(
     var imageAspectRatio by remember(snapshot.snapshotKey) {
         mutableFloatStateOf(DefaultImageAspectRatio)
     }
-    val replyCountLabel = formatReplyCount(resources, snapshot.replyCount)
 
     Card(
         colors = CardDefaults.cardColors(
@@ -446,11 +445,11 @@ private fun SnapshotCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-        ) {
+        Column {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, start = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (avatarImageModel == null) {
@@ -500,12 +499,13 @@ private fun SnapshotCard(
                         Icon(
                             painter = painterResource(R.drawable.ic_delete),
                             contentDescription = stringResource(R.string.home_description_button_delete),
+                            tint = Unselected,
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             if (mainImageModel == null) {
                 LimitedMediaPlaceholder()
@@ -562,7 +562,7 @@ private fun SnapshotCard(
             )
             PostInteractionRow(
                 snapshot = snapshot,
-                replyCountLabel = replyCountLabel,
+                replyCount = snapshot.replyCount,
                 canShareImage = canShareImage,
                 onReactionSelected = onReactionSelected,
                 onOpenReplies = onOpenReplies,
@@ -575,12 +575,18 @@ private fun SnapshotCard(
 @Composable
 private fun PostInteractionRow(
     snapshot: Snapshot,
-    replyCountLabel: String,
+    replyCount: Int,
     canShareImage: Boolean,
     onReactionSelected: (String) -> Unit,
     onOpenReplies: () -> Unit,
     onShare: () -> Unit,
 ) {
+    val replyCountLabel = if (replyCount > 0) {
+        replyCount.toString()
+    } else {
+        ""
+    }
+
     Column(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -595,11 +601,19 @@ private fun PostInteractionRow(
             )
             TextButton(
                 onClick = onOpenReplies,
-                modifier = Modifier
-                    .testTag(ReplyButtonTag)
-                    .padding(horizontal = 8.dp),
+                modifier = Modifier.testTag(ReplyButtonTag),
             ) {
-                Text(text = replyCountLabel)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_comment),
+                        contentDescription = stringResource(R.string.home_description_button_share),
+                        tint = PrimaryLight,
+                    )
+                    Text(text = replyCountLabel)
+                }
             }
             if (snapshot.hasPendingReaction || snapshot.hasPendingReply) {
                 CircularProgressIndicator(
@@ -685,7 +699,7 @@ private fun ReactionSummaryRow(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 sortedReactions
                     .forEach { (emoji, _) ->
@@ -740,7 +754,7 @@ private fun ReactionItem(
     ) {
         Text(
             text = emoji,
-            style = if (isSelected) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center,
         )
     }
@@ -788,7 +802,7 @@ private fun SnapshotReplySheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             when {
-                state.isLoading -> {
+                state.isLoading && state.replies.isEmpty() -> {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -825,6 +839,21 @@ private fun SnapshotReplySheet(
                             .heightIn(min = 120.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        if (state.isLoading) {
+                            item(key = "reply_loading_indicator") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                }
+                            }
+                        }
                         items(
                             items = state.replies,
                             key = SnapshotReply::replyId,
@@ -1281,7 +1310,7 @@ private fun SnapshotCardPreview() {
     DailyDoseTheme {
         SnapshotCard(
             snapshot = Snapshot(
-                title = "A peaceful morning",
+                title = "My Daily Dose at 12:00 p. m.",
                 dateTime = System.currentTimeMillis() - 3_600_000,
                 photoUrl = "",
                 idUserOwner = "preview-owner",

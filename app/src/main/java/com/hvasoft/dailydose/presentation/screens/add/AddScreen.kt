@@ -22,11 +22,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -49,8 +51,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -163,13 +167,19 @@ fun AddRoute(
         },
         onSelectImage = { showImageSourceDialog = true },
         onPost = {
-            if (title.trim().isEmpty()) {
-                titleErrorRes = R.string.helper_required
-            } else if (selectedImageUri != null) {
-                viewModel.postSnapshot(
-                    title = title.trim(),
-                    imageUri = Uri.parse(selectedImageUri),
-                )
+            when {
+                selectedImageUri == null -> {
+                    onShowMessage(R.string.add_no_post_message)
+                }
+                title.trim().isEmpty() -> {
+                    titleErrorRes = R.string.helper_required
+                }
+                else -> {
+                    viewModel.postSnapshot(
+                        title = title.trim(),
+                        imageUri = Uri.parse(selectedImageUri),
+                    )
+                }
             }
         },
     )
@@ -210,9 +220,13 @@ fun AddScreenContent(
             .padding(all = 16.dp),
         verticalArrangement = Arrangement.spacedBy(
             space = 16.dp,
-            alignment = Alignment.CenterVertically,
-        ),
+            alignment = Alignment.CenterVertically),
     ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        )
         if (isUploading) {
             LinearProgressIndicator(
                 progress = { uploadProgress / 100f },
@@ -220,22 +234,6 @@ fun AddScreenContent(
             )
         } else if (imageUri != null) {
             Spacer(modifier = Modifier.height(4.dp))
-        }
-        Row(Modifier.fillMaxWidth()) {
-            Text(
-                text = message,
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.weight(1f).align(Alignment.CenterVertically),
-            )
-            Button(
-                onClick = onPost,
-                enabled = !isUploading,
-            ) {
-                Text(
-                    text = stringResource(R.string.add_button_post),
-                    color = Color.White,
-                )
-            }
         }
         imageUri?.let {
             OutlinedTextField(
@@ -279,6 +277,29 @@ fun AddScreenContent(
                             height = state.result.drawable.intrinsicHeight,
                         )
                     },
+                )
+            }
+        }
+        Button(
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            onClick = onPost,
+            enabled = !isUploading,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.add_button_post),
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(
+                    painter = painterResource(R.drawable.ic_post_arrow),
+                    contentDescription = stringResource(R.string.add_button_post),
+                    tint = Color.White,
                 )
             }
         }

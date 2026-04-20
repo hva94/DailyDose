@@ -10,6 +10,7 @@
     <string name="add_default_title">My Daily Dose at %1$s</string>
     <string name="add_button_post">Publish</string>
     <string name="add_take_picture_error">The photo could not be taken.</string>
+    <string name="add_no_post_message">Please, add a new post first.</string>
 
     <string name="home_title">Pool</string>
     <string name="home_add">Drop it</string>
@@ -27,7 +28,6 @@
     <string name="home_like_offline_unavailable">Likes are unavailable while viewing offline content.</string>
     <string name="home_delete_offline_unavailable">Deleting snapshots is unavailable while viewing offline content.</string>
     <string name="home_reply_sheet_title">Replies</string>
-    <string name="home_reply_count_empty">Reply</string>
     <string name="home_reply_empty_title">No replies yet</string>
     <string name="home_reply_empty_message">Start the conversation with the first reply.</string>
     <string name="home_reply_load_error">Could not load replies.</string>
@@ -115,10 +115,6 @@
     <plurals name="minutes_date_time_label_text">
         <item quantity="one">%1$d minute ago</item>
         <item quantity="other">%1$d minutes ago</item>
-    </plurals>
-    <plurals name="home_reply_count_label">
-        <item quantity="one">%1$d reply</item>
-        <item quantity="other">%1$d replies</item>
     </plurals>
 
     <string name="hours_date_time_label_text">%1$dh</string>

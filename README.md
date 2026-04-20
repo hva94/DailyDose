@@ -18,6 +18,14 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
+## 1.3.2
+- Replies now stay available offline and refresh more reliably when you reopen the feed.
+- Pending replies now reconcile more cleanly after the app reconnects.
+- The replies sheet now keeps earlier messages visible while newer ones continue loading.
+- Snapshot cards now use a cleaner comment action with a compact reply count.
+- The Add flow now prevents publishing before a photo is selected.
+- Posting from Add is now clearer with a more prominent publish action.
+
 ## 1.3.1 - Version 4 release.
 - App layouts now draw edge to edge more consistently across modern Android devices.
 - The Home feed now keeps cards and empty states clear of the status and navigation bars.

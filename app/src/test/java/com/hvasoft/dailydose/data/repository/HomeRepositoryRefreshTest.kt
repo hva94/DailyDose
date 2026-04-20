@@ -8,6 +8,7 @@ import com.hvasoft.dailydose.data.local.FeedSyncStateDao
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
 import com.hvasoft.dailydose.data.local.OfflineFeedMapper
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import io.mockk.coEvery
 import io.mockk.coJustRun
@@ -26,6 +27,7 @@ class HomeRepositoryRefreshTest {
     private lateinit var refreshCoordinator: HomeFeedRefreshCoordinator
     private lateinit var interactionSyncCoordinator: SnapshotInteractionSyncCoordinator
     private lateinit var pendingSnapshotActionDao: PendingSnapshotActionDao
+    private lateinit var offlineSnapshotReplyDao: OfflineSnapshotReplyDao
     private lateinit var repository: HomeRepositoryImpl
     private lateinit var authSessionProvider: FakeAuthSessionProvider
 
@@ -38,10 +40,12 @@ class HomeRepositoryRefreshTest {
         refreshCoordinator = mockk()
         interactionSyncCoordinator = mockk()
         pendingSnapshotActionDao = mockk(relaxed = true)
+        offlineSnapshotReplyDao = mockk(relaxed = true)
         repository = HomeRepositoryImpl(
             remoteDatabaseService = mockk(relaxed = true),
             offlineFeedItemDao = mockk<OfflineFeedItemDao>(relaxed = true),
             offlineMediaAssetDao = mockk<OfflineMediaAssetDao>(relaxed = true),
+            offlineSnapshotReplyDao = offlineSnapshotReplyDao,
             pendingSnapshotActionDao = pendingSnapshotActionDao,
             feedSyncStateDao = mockk<FeedSyncStateDao>(relaxed = true),
             offlineFeedMapper = OfflineFeedMapper(),
@@ -94,11 +98,13 @@ class HomeRepositoryRefreshTest {
     fun `clearOfflineSnapshots delegates cleanup for the provided account and pending actions`() = runTest {
         coJustRun { refreshCoordinator.clearAccount(accountId) }
         coJustRun { pendingSnapshotActionDao.deleteByAccount(accountId) }
+        coJustRun { offlineSnapshotReplyDao.deleteByAccount(accountId) }
 
         repository.clearOfflineSnapshots(accountId)
 
         coVerify(exactly = 1) { refreshCoordinator.clearAccount(accountId) }
         coVerify(exactly = 1) { pendingSnapshotActionDao.deleteByAccount(accountId) }
+        coVerify(exactly = 1) { offlineSnapshotReplyDao.deleteByAccount(accountId) }
     }
 
     @Test

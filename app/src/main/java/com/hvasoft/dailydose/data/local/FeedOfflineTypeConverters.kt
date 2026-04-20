@@ -4,6 +4,7 @@ import androidx.room.TypeConverter
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import java.util.Base64
 
 class FeedOfflineTypeConverters {
@@ -49,6 +50,13 @@ class FeedOfflineTypeConverters {
     @TypeConverter
     fun toPendingSnapshotActionQueueState(value: String?): PendingSnapshotActionQueueState? =
         value?.let(PendingSnapshotActionQueueState::valueOf)
+
+    @TypeConverter
+    fun fromSnapshotReplyDeliveryState(value: SnapshotReplyDeliveryState?): String? = value?.name
+
+    @TypeConverter
+    fun toSnapshotReplyDeliveryState(value: String?): SnapshotReplyDeliveryState? =
+        value?.let(SnapshotReplyDeliveryState::valueOf)
 
     @TypeConverter
     fun fromReactionSummary(value: Map<String, Int>?): String =

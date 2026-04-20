@@ -40,6 +40,7 @@ class HomeRepositoryImplTest {
     private val accountId = "user-123"
     private lateinit var offlineFeedItemDao: FakeOfflineFeedItemDao
     private lateinit var offlineMediaAssetDao: FakeOfflineMediaAssetDao
+    private lateinit var offlineSnapshotReplyDao: FakeOfflineSnapshotReplyDao
     private lateinit var pendingSnapshotActionDao: FakePendingSnapshotActionDao
     private lateinit var feedSyncStateDao: FakeFeedSyncStateDao
     private lateinit var remoteDatabaseService: com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
@@ -57,6 +58,7 @@ class HomeRepositoryImplTest {
 
         offlineFeedItemDao = FakeOfflineFeedItemDao()
         offlineMediaAssetDao = FakeOfflineMediaAssetDao()
+        offlineSnapshotReplyDao = FakeOfflineSnapshotReplyDao()
         pendingSnapshotActionDao = FakePendingSnapshotActionDao()
         feedSyncStateDao = FakeFeedSyncStateDao()
         remoteDatabaseService = mockk(relaxed = true)
@@ -64,6 +66,7 @@ class HomeRepositoryImplTest {
             remoteDatabaseService = remoteDatabaseService,
             offlineFeedItemDao = offlineFeedItemDao,
             offlineMediaAssetDao = offlineMediaAssetDao,
+            offlineSnapshotReplyDao = offlineSnapshotReplyDao,
             pendingSnapshotActionDao = pendingSnapshotActionDao,
             feedSyncStateDao = feedSyncStateDao,
             offlineFeedMapper = OfflineFeedMapper(),
@@ -72,6 +75,7 @@ class HomeRepositoryImplTest {
                 remoteDatabaseService = remoteDatabaseService,
                 pendingSnapshotActionDao = pendingSnapshotActionDao,
                 offlineFeedItemDao = offlineFeedItemDao,
+                offlineSnapshotReplyDao = offlineSnapshotReplyDao,
             ),
             authSessionProvider = authSessionProvider,
             feedAssetStorage = mockk<FeedAssetStorage>(relaxed = true),
@@ -317,6 +321,17 @@ class HomeRepositoryImplTest {
 
     @Test
     fun `getSnapshotReplies merges remote and pending replies in chronological order`() = runTest {
+        feedSyncStateDao.setState(
+            FeedSyncStateEntity(
+                accountId = accountId,
+                lastSuccessfulSyncAt = 100L,
+                lastRefreshAttemptAt = 100L,
+                lastRefreshResult = HomeFeedLastRefreshResult.SUCCESS,
+                retainedItemCount = 1,
+                retentionLimit = 50,
+                hasRetainedContent = true,
+            ),
+        )
         val remoteReplies = listOf(
             SnapshotReply(
                 replyId = "reply-1",
@@ -361,6 +376,71 @@ class HomeRepositoryImplTest {
         assertThat(result.isSuccess).isTrue()
         assertThat(result.getOrThrow().map(SnapshotReply::text)).containsExactly("First", "Second").inOrder()
         assertThat(result.getOrThrow().last().deliveryState).isEqualTo(SnapshotReplyDeliveryState.PENDING)
+        assertThat(offlineSnapshotReplyDao.storedReplies(accountId, "snapshot-1").map { it.text })
+            .containsExactly("First")
+    }
+
+    @Test
+    fun `getSnapshotReplies falls back to cached replies when offline`() = runTest {
+        feedSyncStateDao.setState(
+            FeedSyncStateEntity(
+                accountId = accountId,
+                lastSuccessfulSyncAt = 100L,
+                lastRefreshAttemptAt = 200L,
+                lastRefreshResult = HomeFeedLastRefreshResult.NETWORK_FAILURE,
+                retainedItemCount = 1,
+                retentionLimit = 50,
+                hasRetainedContent = true,
+            ),
+        )
+        offlineSnapshotReplyDao.upsertAll(
+            listOf(
+                com.hvasoft.dailydose.data.local.OfflineSnapshotReplyEntity(
+                    accountId = accountId,
+                    snapshotId = "snapshot-1",
+                    replyId = "reply-1",
+                    ownerUserId = "owner-1",
+                    userName = "Alex",
+                    userPhotoUrl = null,
+                    text = "Cached reply",
+                    dateTime = 100L,
+                    deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+                ),
+            ),
+        )
+        coEvery { remoteDatabaseService.getSnapshotReplies("snapshot-1") } throws IllegalStateException("offline")
+
+        val result = repository.getSnapshotReplies(Snapshot(snapshotKey = "snapshot-1"))
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow().map(SnapshotReply::text)).containsExactly("Cached reply")
+        coVerify(exactly = 0) { remoteDatabaseService.getSnapshotReplies(any()) }
+    }
+
+    @Test
+    fun `getSnapshotReplies returns empty list offline when snapshot has no replies`() = runTest {
+        feedSyncStateDao.setState(
+            FeedSyncStateEntity(
+                accountId = accountId,
+                lastSuccessfulSyncAt = 100L,
+                lastRefreshAttemptAt = 200L,
+                lastRefreshResult = HomeFeedLastRefreshResult.NETWORK_FAILURE,
+                retainedItemCount = 1,
+                retentionLimit = 50,
+                hasRetainedContent = true,
+            ),
+        )
+
+        val result = repository.getSnapshotReplies(
+            Snapshot(
+                snapshotKey = "snapshot-1",
+                replyCount = 0,
+            ),
+        )
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow()).isEmpty()
+        coVerify(exactly = 0) { remoteDatabaseService.getSnapshotReplies(any()) }
     }
 
     @Test
@@ -414,6 +494,130 @@ class HomeRepositoryImplTest {
         assertThat(queuedReply.text).isEqualTo("Hello there")
         assertThat(queuedReply.userName).isEqualTo("Henry")
         assertThat(queuedReply.userPhotoUrl).isEqualTo("https://example.com/profile.jpg")
+        assertThat(offlineSnapshotReplyDao.storedReplies(accountId, "snapshot-1").single().text)
+            .isEqualTo("Hello there")
+    }
+
+    @Test
+    fun `reply sync replaces cached pending reply with confirmed server reply`() = runTest {
+        offlineFeedItemDao.upsertAll(
+            listOf(
+                OfflineFeedItemEntity(
+                    accountId = accountId,
+                    snapshotId = "snapshot-1",
+                    ownerUserId = accountId,
+                    title = "Snapshot",
+                    publishedAt = 100L,
+                    sortOrder = 0L,
+                    remotePhotoUrl = "https://example.com/snapshot.jpg",
+                    mainImageAssetId = null,
+                    ownerDisplayName = "Henry",
+                    ownerAvatarRemoteUrl = "",
+                    ownerAvatarAssetId = null,
+                    likeCount = 0,
+                    likedByCurrentUser = false,
+                    reactionCount = 0,
+                    reactionSummary = emptyMap(),
+                    currentUserReaction = null,
+                    replyCount = 1,
+                    hasPendingReaction = false,
+                    hasPendingReply = false,
+                    legacyLikeCount = null,
+                    availabilityStatus = OfflineItemAvailabilityStatus.MEDIA_PARTIAL,
+                    syncedAt = 100L,
+                ),
+            ),
+        )
+        coEvery { remoteDatabaseService.getUserPhotoUrlOnce(accountId) } returns ""
+        coEvery {
+            remoteDatabaseService.addSnapshotReply(snapshotId = "snapshot-1", reply = any())
+        } throws IllegalStateException("offline")
+
+        repository.addSnapshotReply(
+            snapshot = Snapshot(snapshotKey = "snapshot-1"),
+            text = "Hello there",
+        )
+
+        val coordinator = SnapshotInteractionSyncCoordinator(
+            remoteDatabaseService = remoteDatabaseService,
+            pendingSnapshotActionDao = pendingSnapshotActionDao,
+            offlineFeedItemDao = offlineFeedItemDao,
+            offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+        )
+        coEvery {
+            remoteDatabaseService.addSnapshotReply(snapshotId = "snapshot-1", reply = any())
+        } returns SnapshotReply(
+            replyId = "reply-remote-1",
+            snapshotId = "snapshot-1",
+            idUserOwner = accountId,
+            userName = "Henry",
+            userPhotoUrl = null,
+            text = "Hello there",
+            dateTime = 200L,
+            deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+        )
+
+        coordinator.flushPendingActions(accountId = accountId, rollbackOnFailure = true)
+
+        val cachedReplies = offlineSnapshotReplyDao.storedReplies(accountId, "snapshot-1")
+        assertThat(cachedReplies).hasSize(1)
+        assertThat(cachedReplies.single().replyId).isEqualTo("reply-remote-1")
+        assertThat(cachedReplies.single().deliveryState).isEqualTo(SnapshotReplyDeliveryState.CONFIRMED)
+        assertThat(pendingSnapshotActionDao.getBySnapshot(accountId, "snapshot-1")).isEmpty()
+    }
+
+    @Test
+    fun `reply rollback removes cached pending reply after reconnect failure`() = runTest {
+        offlineFeedItemDao.upsertAll(
+            listOf(
+                OfflineFeedItemEntity(
+                    accountId = accountId,
+                    snapshotId = "snapshot-1",
+                    ownerUserId = accountId,
+                    title = "Snapshot",
+                    publishedAt = 100L,
+                    sortOrder = 0L,
+                    remotePhotoUrl = "https://example.com/snapshot.jpg",
+                    mainImageAssetId = null,
+                    ownerDisplayName = "Henry",
+                    ownerAvatarRemoteUrl = "",
+                    ownerAvatarAssetId = null,
+                    likeCount = 0,
+                    likedByCurrentUser = false,
+                    reactionCount = 0,
+                    reactionSummary = emptyMap(),
+                    currentUserReaction = null,
+                    replyCount = 1,
+                    hasPendingReaction = false,
+                    hasPendingReply = false,
+                    legacyLikeCount = null,
+                    availabilityStatus = OfflineItemAvailabilityStatus.MEDIA_PARTIAL,
+                    syncedAt = 100L,
+                ),
+            ),
+        )
+        coEvery { remoteDatabaseService.getUserPhotoUrlOnce(accountId) } returns ""
+        coEvery {
+            remoteDatabaseService.addSnapshotReply(snapshotId = "snapshot-1", reply = any())
+        } throws IllegalStateException("offline")
+
+        repository.addSnapshotReply(
+            snapshot = Snapshot(snapshotKey = "snapshot-1"),
+            text = "Hello there",
+        )
+
+        val coordinator = SnapshotInteractionSyncCoordinator(
+            remoteDatabaseService = remoteDatabaseService,
+            pendingSnapshotActionDao = pendingSnapshotActionDao,
+            offlineFeedItemDao = offlineFeedItemDao,
+            offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+        )
+
+        coordinator.flushPendingActions(accountId = accountId, rollbackOnFailure = true)
+
+        assertThat(offlineSnapshotReplyDao.storedReplies(accountId, "snapshot-1")).isEmpty()
+        assertThat(pendingSnapshotActionDao.getBySnapshot(accountId, "snapshot-1").single().queueState)
+            .isEqualTo(PendingSnapshotActionQueueState.FAILED)
     }
 
     @Test

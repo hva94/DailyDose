@@ -15,8 +15,11 @@ import com.hvasoft.dailydose.data.local.OfflineFeedMapper
 import com.hvasoft.dailydose.data.local.OfflineItemAvailabilityStatus
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionEntity
+import com.hvasoft.dailydose.data.local.toDomain
+import com.hvasoft.dailydose.data.local.toOfflineEntity
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedCurrentUserReaction
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionCount
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionSummary
@@ -31,12 +34,14 @@ import com.hvasoft.dailydose.domain.repository.HomeRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 
 class HomeRepositoryImpl @Inject constructor(
     private val remoteDatabaseService: com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService,
     private val offlineFeedItemDao: OfflineFeedItemDao,
     private val offlineMediaAssetDao: OfflineMediaAssetDao,
+    private val offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
     private val pendingSnapshotActionDao: PendingSnapshotActionDao,
     private val feedSyncStateDao: FeedSyncStateDao,
     private val offlineFeedMapper: OfflineFeedMapper,
@@ -84,6 +89,7 @@ class HomeRepositoryImpl @Inject constructor(
     override suspend fun clearOfflineSnapshots(accountId: String) {
         refreshCoordinator.clearAccount(accountId)
         pendingSnapshotActionDao.deleteByAccount(accountId)
+        offlineSnapshotReplyDao.deleteByAccount(accountId)
     }
 
     override suspend fun cachePostedSnapshot(snapshot: Snapshot) {
@@ -200,18 +206,42 @@ class HomeRepositoryImpl @Inject constructor(
             .map { action ->
                 SnapshotInteractionSyncCoordinator.decodeReplyPayload(snapshot.snapshotKey, action.payload)
             }
+        val cachedReplies = offlineSnapshotReplyDao.getBySnapshot(accountId, snapshot.snapshotKey)
+            .map { it.toDomain() }
+
+        if (snapshot.replyCount == 0 && cachedReplies.isEmpty() && pendingReplies.isEmpty()) {
+            return Result.success(emptyList())
+        }
+
+        if (cachedReplies.isNotEmpty() && cachedReplies.size >= snapshot.replyCount) {
+            return loadCachedReplies(
+                snapshot = snapshot,
+                cachedReplies = cachedReplies,
+                pendingReplies = pendingReplies,
+            )
+        }
 
         return runCatching {
-            remoteDatabaseService.getSnapshotReplies(snapshot.snapshotKey)
-        }.map { remoteReplies ->
-            (remoteReplies + pendingReplies)
-                .sortedWith(compareBy<SnapshotReply> { it.dateTime }.thenBy { it.replyId })
-        }.recoverCatching { failure ->
-            if (pendingReplies.isNotEmpty()) {
-                pendingReplies.sortedWith(compareBy<SnapshotReply> { it.dateTime }.thenBy { it.replyId })
-            } else {
-                throw failure
+            withTimeout(REPLY_FETCH_TIMEOUT_MS) {
+                remoteDatabaseService.getSnapshotReplies(snapshot.snapshotKey)
             }
+        }.map { remoteReplies ->
+            cacheRemoteReplies(
+                accountId = accountId,
+                snapshotId = snapshot.snapshotKey,
+                replies = remoteReplies,
+            )
+            mergeReplies(
+                confirmedReplies = remoteReplies,
+                pendingReplies = pendingReplies,
+            )
+        }.recoverCatching { failure ->
+            loadCachedReplies(
+                snapshot = snapshot,
+                cachedReplies = cachedReplies,
+                pendingReplies = pendingReplies,
+                failure = failure,
+            ).getOrThrow()
         }
     }
 
@@ -258,6 +288,7 @@ class HomeRepositoryImpl @Inject constructor(
                 supersedesActionId = null,
             ),
         )
+        offlineSnapshotReplyDao.upsertAll(listOf(localReply.toOfflineEntity(accountId)))
 
         offlineFeedItemDao.getBySnapshotId(accountId, snapshot.snapshotKey)?.let { cached ->
             offlineFeedItemDao.upsertAll(
@@ -284,6 +315,7 @@ class HomeRepositoryImpl @Inject constructor(
         val result = remoteDatabaseService.deleteSnapshot(snapshot)
         if (result != 0) {
             offlineFeedItemDao.deleteBySnapshotId(accountId, snapshot.snapshotKey)
+            offlineSnapshotReplyDao.deleteBySnapshot(accountId, snapshot.snapshotKey)
             cleanupOrphanedAssets(
                 accountId = accountId,
                 assetIds = listOfNotNull(
@@ -412,11 +444,65 @@ class HomeRepositoryImpl @Inject constructor(
     private fun buildAvatarAssetId(accountId: String, ownerUserId: String): String =
         "avatar-$accountId-$ownerUserId"
 
+    private suspend fun cacheRemoteReplies(
+        accountId: String,
+        snapshotId: String,
+        replies: List<SnapshotReply>,
+    ) {
+        offlineSnapshotReplyDao.deleteBySnapshotAndDeliveryState(
+            accountId = accountId,
+            snapshotId = snapshotId,
+            deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+        )
+        if (replies.isNotEmpty()) {
+            offlineSnapshotReplyDao.upsertAll(
+                replies.map { reply ->
+                    reply.copy(deliveryState = SnapshotReplyDeliveryState.CONFIRMED)
+                        .toOfflineEntity(accountId)
+                },
+            )
+        }
+    }
+
+    private fun loadCachedReplies(
+        snapshot: Snapshot,
+        cachedReplies: List<SnapshotReply>,
+        pendingReplies: List<SnapshotReply>,
+        failure: Throwable? = null,
+    ): Result<List<SnapshotReply>> {
+        return when {
+            cachedReplies.isNotEmpty() || pendingReplies.isNotEmpty() -> {
+                Result.success(
+                    mergeReplies(
+                        confirmedReplies = cachedReplies,
+                        pendingReplies = pendingReplies,
+                    ),
+                )
+            }
+
+            snapshot.replyCount == 0 -> Result.success(emptyList())
+            failure != null -> Result.failure(failure)
+            else -> Result.failure(IllegalStateException("No cached replies available"))
+        }
+    }
+
+    private fun mergeReplies(
+        confirmedReplies: List<SnapshotReply>,
+        pendingReplies: List<SnapshotReply>,
+    ): List<SnapshotReply> = (confirmedReplies + pendingReplies)
+        .associateBy(SnapshotReply::replyId)
+        .values
+        .sortedWith(compareBy<SnapshotReply> { it.dateTime }.thenBy { it.replyId })
+
     private data class LocalReactionState(
         val currentUserReaction: String?,
         val reactionSummary: Map<String, Int>,
         val reactionCount: Int,
     )
+
+    private companion object {
+        const val REPLY_FETCH_TIMEOUT_MS = 5_000L
+    }
 
     private data class ResolvedAvatar(
         val remoteUrl: String,

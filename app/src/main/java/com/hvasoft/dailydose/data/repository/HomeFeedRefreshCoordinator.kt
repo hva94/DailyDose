@@ -12,7 +12,9 @@ import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetType
 import com.hvasoft.dailydose.data.local.OfflineMediaDownloadStatus
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyDao
 import com.hvasoft.dailydose.data.local.ProfileLocalCache
+import com.hvasoft.dailydose.data.local.toOfflineEntity
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.di.DispatcherIO
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedCurrentUserReaction
@@ -20,7 +22,11 @@ import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactio
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionSummary
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.logging.Logger
@@ -31,6 +37,7 @@ class HomeFeedRefreshCoordinator @Inject constructor(
     private val transactionRunner: HomeFeedTransactionRunner,
     private val offlineFeedItemDao: OfflineFeedItemDao,
     private val offlineMediaAssetDao: OfflineMediaAssetDao,
+    private val offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
     private val feedSyncStateDao: FeedSyncStateDao,
     private val feedAssetStorage: FeedAssetStorage,
     private val profileLocalCache: ProfileLocalCache,
@@ -70,8 +77,14 @@ class HomeFeedRefreshCoordinator @Inject constructor(
                     desiredAssetsById[avatarAsset.assetId] = avatarAsset
                 }
             }
+            val repliesBySnapshotId = loadRepliesBySnapshotId(remoteSnapshots)
 
             if (canUseFastPath(desiredRetainedItems, existingFeedItems, existingAssetsById)) {
+                syncRetainedReplies(
+                    accountId = accountId,
+                    retainedSnapshotIds = desiredRetainedItems.map(DesiredRetainedItem::snapshotId),
+                    repliesBySnapshotId = repliesBySnapshotId,
+                )
                 syncCurrentUserProfileCache(
                     accountId = accountId,
                     retainedItems = existingFeedItems,
@@ -114,6 +127,9 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             val staleAssets = existingAssets.filter { existing ->
                 desiredAssetsById.containsKey(existing.assetId).not()
             }
+            val staleSnapshotIds = existingFeedItems
+                .map(OfflineFeedItemEntity::snapshotId)
+                .filter { snapshotId -> desiredRetainedItems.none { it.snapshotId == snapshotId } }
             val retainedItemCount = retainedFeedItems.size
             transactionRunner.runInTransaction {
                 if (retainedFeedItems.isEmpty()) {
@@ -124,6 +140,14 @@ class HomeFeedRefreshCoordinator @Inject constructor(
                         accountId = accountId,
                         snapshotIds = retainedFeedItems.map(OfflineFeedItemEntity::snapshotId),
                     )
+                }
+                syncRetainedReplies(
+                    accountId = accountId,
+                    retainedSnapshotIds = retainedFeedItems.map(OfflineFeedItemEntity::snapshotId),
+                    repliesBySnapshotId = repliesBySnapshotId,
+                )
+                staleSnapshotIds.forEach { snapshotId ->
+                    offlineSnapshotReplyDao.deleteBySnapshot(accountId, snapshotId)
                 }
 
                 if (retainedAssets.isEmpty()) {
@@ -175,6 +199,7 @@ class HomeFeedRefreshCoordinator @Inject constructor(
         val retainedAssets = offlineMediaAssetDao.getByAccount(accountId)
         offlineFeedItemDao.deleteByAccount(accountId)
         offlineMediaAssetDao.deleteByAccount(accountId)
+        offlineSnapshotReplyDao.deleteByAccount(accountId)
         feedSyncStateDao.deleteByAccount(accountId)
         feedAssetStorage.deleteFiles(retainedAssets.mapNotNull(OfflineMediaAssetEntity::localPath))
         feedAssetStorage.clearAccount(accountId)
@@ -360,6 +385,46 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             replyCount = snapshot.replyCount,
             legacyLikeCount = snapshot.likeList?.size,
         )
+    }
+
+    private suspend fun loadRepliesBySnapshotId(
+        remoteSnapshots: List<Snapshot>,
+    ): Map<String, List<com.hvasoft.dailydose.domain.model.SnapshotReply>> = coroutineScope {
+        remoteSnapshots.map { snapshot ->
+            async {
+                snapshot.snapshotKey to runCatching {
+                    remoteDatabaseService.getSnapshotReplies(snapshot.snapshotKey)
+                }.getOrElse { failure ->
+                    logger.warning(
+                        "Failed to retain replies for snapshot ${snapshot.snapshotKey}: ${failure.message}",
+                    )
+                    emptyList()
+                }
+            }
+        }.awaitAll().toMap()
+    }
+
+    private suspend fun syncRetainedReplies(
+        accountId: String,
+        retainedSnapshotIds: List<String>,
+        repliesBySnapshotId: Map<String, List<com.hvasoft.dailydose.domain.model.SnapshotReply>>,
+    ) {
+        retainedSnapshotIds.forEach { snapshotId ->
+            offlineSnapshotReplyDao.deleteBySnapshotAndDeliveryState(
+                accountId = accountId,
+                snapshotId = snapshotId,
+                deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+            )
+            val replies = repliesBySnapshotId[snapshotId].orEmpty()
+            if (replies.isNotEmpty()) {
+                offlineSnapshotReplyDao.upsertAll(
+                    replies.map { reply ->
+                        reply.copy(deliveryState = SnapshotReplyDeliveryState.CONFIRMED)
+                            .toOfflineEntity(accountId)
+                    },
+                )
+            }
+        }
     }
 
     private fun syncCurrentUserProfileCache(

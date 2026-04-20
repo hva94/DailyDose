@@ -1,8 +1,10 @@
 package com.hvasoft.dailydose.data.repository
 
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionEntity
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
+import com.hvasoft.dailydose.data.local.toOfflineEntity
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
@@ -15,6 +17,7 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
     private val remoteDatabaseService: RemoteDatabaseService,
     private val pendingSnapshotActionDao: PendingSnapshotActionDao,
     private val offlineFeedItemDao: OfflineFeedItemDao,
+    private val offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
 ) {
 
     suspend fun flushPendingActions(
@@ -60,9 +63,18 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
                     }
 
                     PendingSnapshotActionType.ADD_REPLY -> {
-                        remoteDatabaseService.addSnapshotReply(
+                        val localReply = decodeReplyPayload(action.snapshotId, action.payload)
+                        val confirmedReply = remoteDatabaseService.addSnapshotReply(
                             snapshotId = action.snapshotId,
-                            reply = decodeReplyPayload(action.snapshotId, action.payload),
+                            reply = localReply,
+                        )
+                        offlineSnapshotReplyDao.deleteByReplyId(
+                            accountId = action.accountId,
+                            snapshotId = action.snapshotId,
+                            replyId = localReply.replyId,
+                        )
+                        offlineSnapshotReplyDao.upsertAll(
+                            listOf(confirmedReply.toOfflineEntity(action.accountId)),
                         )
                     }
                 }
@@ -70,6 +82,14 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
                 applied = true
             } catch (_: Exception) {
                 if (rollbackOnFailure) {
+                    if (action.actionType == PendingSnapshotActionType.ADD_REPLY) {
+                        val localReply = decodeReplyPayload(action.snapshotId, action.payload)
+                        offlineSnapshotReplyDao.deleteByReplyId(
+                            accountId = action.accountId,
+                            snapshotId = action.snapshotId,
+                            replyId = localReply.replyId,
+                        )
+                    }
                     pendingSnapshotActionDao.updateState(
                         actionId = action.actionId,
                         queueState = PendingSnapshotActionQueueState.FAILED,

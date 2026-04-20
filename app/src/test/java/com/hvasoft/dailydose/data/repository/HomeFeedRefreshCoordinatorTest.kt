@@ -10,10 +10,13 @@ import com.hvasoft.dailydose.data.local.OfflineFeedItemEntity
 import com.hvasoft.dailydose.data.local.OfflineItemAvailabilityStatus
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetType
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyEntity
 import com.hvasoft.dailydose.data.local.ProfileLocalCache
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotReply
+import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.just
@@ -38,6 +41,7 @@ class HomeFeedRefreshCoordinatorTest {
     private lateinit var assetStorage: FeedAssetStorage
     private lateinit var offlineFeedItemDao: FakeOfflineFeedItemDao
     private lateinit var offlineMediaAssetDao: FakeOfflineMediaAssetDao
+    private lateinit var offlineSnapshotReplyDao: FakeOfflineSnapshotReplyDao
     private lateinit var feedSyncStateDao: FakeFeedSyncStateDao
     private lateinit var profileLocalCache: ProfileLocalCache
 
@@ -65,6 +69,7 @@ class HomeFeedRefreshCoordinatorTest {
         assetStorage = FeedAssetStorage(context, mainDispatcherRule.dispatcher)
         offlineFeedItemDao = FakeOfflineFeedItemDao()
         offlineMediaAssetDao = FakeOfflineMediaAssetDao()
+        offlineSnapshotReplyDao = FakeOfflineSnapshotReplyDao()
         feedSyncStateDao = FakeFeedSyncStateDao()
         profileLocalCache = ProfileLocalCache(context)
     }
@@ -311,6 +316,44 @@ class HomeFeedRefreshCoordinatorTest {
             .isEqualTo(HomeFeedLastRefreshResult.SUCCESS)
     }
 
+    @Test
+    fun `refresh retains replies for offline access`() = runTest {
+        val mediaUrl = newMediaUrl("snapshot-with-replies.jpg")
+        val snapshot = snapshot(
+            snapshotId = "snapshot-1",
+            photoUrl = mediaUrl,
+            ownerUserId = "owner-1",
+            publishedAt = 100L,
+        ).copy(replyCount = 1)
+
+        val coordinator = createCoordinator(
+            remoteDatabaseService = FakeRemoteDatabaseService(
+                snapshots = listOf(snapshot),
+                namesByUserId = mapOf("owner-1" to "Owner 1"),
+                repliesBySnapshotId = mapOf(
+                    "snapshot-1" to listOf(
+                        SnapshotReply(
+                            replyId = "reply-1",
+                            snapshotId = "snapshot-1",
+                            idUserOwner = "owner-2",
+                            userName = "Alex",
+                            userPhotoUrl = null,
+                            text = "Stored reply",
+                            dateTime = 150L,
+                            deliveryState = SnapshotReplyDeliveryState.CONFIRMED,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val result = coordinator.refresh(accountId)
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(offlineSnapshotReplyDao.storedReplies(accountId, "snapshot-1").map(OfflineSnapshotReplyEntity::text))
+            .containsExactly("Stored reply")
+    }
+
     private fun createCoordinator(
         snapshots: List<Snapshot>,
         namesByUserId: Map<String, String> = emptyMap(),
@@ -324,6 +367,7 @@ class HomeFeedRefreshCoordinatorTest {
         transactionRunner = { block -> block() },
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
+        offlineSnapshotReplyDao = offlineSnapshotReplyDao,
         feedSyncStateDao = feedSyncStateDao,
         feedAssetStorage = assetStorage,
         profileLocalCache = profileLocalCache,
@@ -337,6 +381,7 @@ class HomeFeedRefreshCoordinatorTest {
         transactionRunner = { block -> block() },
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
+        offlineSnapshotReplyDao = offlineSnapshotReplyDao,
         feedSyncStateDao = feedSyncStateDao,
         feedAssetStorage = assetStorage,
         profileLocalCache = profileLocalCache,

@@ -16,6 +16,7 @@ import com.hvasoft.dailydose.data.local.HomeFeedTransactionRunner
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
 import com.hvasoft.dailydose.data.local.OfflineFeedMapper
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetDao
+import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyDao
 import com.hvasoft.dailydose.data.local.ProfileLocalCache
 import com.hvasoft.dailydose.data.local.RoomHomeFeedTransactionRunner
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
@@ -69,6 +70,7 @@ object HomeRepositoryModule {
         remoteDatabaseService: RemoteDatabaseService,
         offlineFeedItemDao: OfflineFeedItemDao,
         offlineMediaAssetDao: OfflineMediaAssetDao,
+        offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
         pendingSnapshotActionDao: PendingSnapshotActionDao,
         feedSyncStateDao: FeedSyncStateDao,
         offlineFeedMapper: OfflineFeedMapper,
@@ -80,6 +82,7 @@ object HomeRepositoryModule {
         remoteDatabaseService = remoteDatabaseService,
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
+        offlineSnapshotReplyDao = offlineSnapshotReplyDao,
         pendingSnapshotActionDao = pendingSnapshotActionDao,
         feedSyncStateDao = feedSyncStateDao,
         offlineFeedMapper = offlineFeedMapper,
@@ -158,6 +161,10 @@ object HomeRepositoryModule {
         database.pendingSnapshotActionDao()
 
     @Provides
+    fun providesOfflineSnapshotReplyDao(database: DailyDoseDatabase): OfflineSnapshotReplyDao =
+        database.offlineSnapshotReplyDao()
+
+    @Provides
     @Singleton
     fun providesOfflineFeedMapper(): OfflineFeedMapper = OfflineFeedMapper()
 
@@ -181,6 +188,7 @@ object HomeRepositoryModule {
         transactionRunner: HomeFeedTransactionRunner,
         offlineFeedItemDao: OfflineFeedItemDao,
         offlineMediaAssetDao: OfflineMediaAssetDao,
+        offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
         feedSyncStateDao: FeedSyncStateDao,
         feedAssetStorage: FeedAssetStorage,
         profileLocalCache: ProfileLocalCache,
@@ -190,6 +198,7 @@ object HomeRepositoryModule {
         transactionRunner = transactionRunner,
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
+        offlineSnapshotReplyDao = offlineSnapshotReplyDao,
         feedSyncStateDao = feedSyncStateDao,
         feedAssetStorage = feedAssetStorage,
         profileLocalCache = profileLocalCache,
@@ -202,9 +211,11 @@ object HomeRepositoryModule {
         remoteDatabaseService: RemoteDatabaseService,
         pendingSnapshotActionDao: PendingSnapshotActionDao,
         offlineFeedItemDao: OfflineFeedItemDao,
+        offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
     ): SnapshotInteractionSyncCoordinator = SnapshotInteractionSyncCoordinator(
         remoteDatabaseService = remoteDatabaseService,
         pendingSnapshotActionDao = pendingSnapshotActionDao,
         offlineFeedItemDao = offlineFeedItemDao,
+        offlineSnapshotReplyDao = offlineSnapshotReplyDao,
     )
 }
