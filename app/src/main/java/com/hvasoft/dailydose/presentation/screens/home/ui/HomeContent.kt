@@ -51,7 +51,8 @@ internal fun HomeContent(
     contentPadding: PaddingValues = PaddingValues(),
     onRetry: () -> Unit,
     onRefresh: () -> Unit,
-    onReactionSelected: (Snapshot, String) -> Unit,
+    onOpenDailyPrompt: () -> Unit,
+    onReactionSelected: (Snapshot, String?) -> Unit,
     onOpenReplies: (Snapshot) -> Unit,
     onShare: (Snapshot) -> Unit,
     onOpenImage: (Snapshot) -> Unit,
@@ -66,9 +67,13 @@ internal fun HomeContent(
     val isOfflineEmpty = uiState.availabilityMode == HomeFeedAvailabilityMode.OFFLINE_EMPTY &&
         uiState.isBackgroundRefreshing.not() &&
         pagingItems.itemCount == 0
+    val shouldDeferListUntilPromptLoads = uiState.isPromptLoading &&
+        loadState is LoadState.NotLoading &&
+        pagingItems.itemCount > 0
     val isEmpty = loadState is LoadState.NotLoading &&
         pagingItems.itemCount == 0 &&
-        isOfflineEmpty.not()
+        isOfflineEmpty.not() &&
+        uiState.shouldShowDailyPromptCard.not()
     val listContentPadding = PaddingValues(
         start = contentPadding.calculateStartPadding(layoutDirection) + 8.dp,
         top = contentPadding.calculateTopPadding() + 8.dp,
@@ -85,7 +90,7 @@ internal fun HomeContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             when {
-                isInitialLoading -> {
+                isInitialLoading || shouldDeferListUntilPromptLoads -> {
                     CircularProgressIndicator(
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -131,6 +136,14 @@ internal fun HomeContent(
                                 HomeFeedStatusPanel(
                                     uiState = uiState,
                                     onRetry = onRetry,
+                                )
+                            }
+                        }
+                        if (uiState.shouldShowDailyPromptCard) {
+                            item(key = "daily-prompt-card") {
+                                DailyPromptCard(
+                                    promptText = uiState.activeDailyPrompt?.promptText.orEmpty(),
+                                    onClick = onOpenDailyPrompt,
                                 )
                             }
                         }

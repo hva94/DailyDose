@@ -1,0 +1,41 @@
+<resources>
+    <string-array name="daily_prompt_answer_formats">
+        <item>{answer} · %time</item>
+        <item>{answer} at %time</item>
+    </string-array>
+
+    <string-array name="daily_prompt_combo_1_title_patterns">
+        <item>Today felt different at %time</item>
+        <item>A different moment at %time</item>
+    </string-array>
+
+    <string-array name="daily_prompt_combo_2_title_patterns">
+        <item>This stood out at %time</item>
+        <item>Something stood out at %time</item>
+    </string-array>
+
+    <string-array name="daily_prompt_combo_3_title_patterns">
+        <item>Something changed at %time</item>
+        <item>A change at %time</item>
+    </string-array>
+
+    <string-array name="daily_prompt_combo_4_title_patterns">
+        <item>This caught my attention at %time</item>
+        <item>Caught this at %time</item>
+    </string-array>
+
+    <string-array name="daily_prompt_combo_5_title_patterns">
+        <item>Felt different at %time</item>
+        <item>This felt different at %time</item>
+    </string-array>
+
+    <string-array name="daily_prompt_combo_6_title_patterns">
+        <item>Not like usual at %time</item>
+        <item>Something unusual at %time</item>
+    </string-array>
+
+    <string-array name="daily_prompt_combo_7_title_patterns">
+        <item>Broke the routine at %time</item>
+        <item>Out of routine at %time</item>
+    </string-array>
+</resources>

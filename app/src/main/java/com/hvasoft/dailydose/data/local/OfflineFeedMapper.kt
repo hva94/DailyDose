@@ -13,6 +13,8 @@ class OfflineFeedMapper @Inject constructor() {
         dateTime = item.publishedAt,
         photoUrl = item.remotePhotoUrl,
         idUserOwner = item.ownerUserId,
+        dailyPromptId = item.dailyPromptId,
+        dailyPromptText = item.dailyPromptText,
         snapshotKey = item.snapshotId,
         userName = item.ownerDisplayName,
         userPhotoUrl = item.ownerAvatarRemoteUrl,

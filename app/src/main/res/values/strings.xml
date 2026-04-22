@@ -11,12 +11,25 @@
     <string name="add_button_post">Publish</string>
     <string name="add_take_picture_error">The photo could not be taken.</string>
     <string name="add_no_post_message">Please, add a new post first.</string>
+    <string name="add_prompt_helper">Tap to post your daily dose</string>
+    <string name="add_prompt_answer_label">Give your answer</string>
+    <string name="add_prompt_answer_placeholder">Optional</string>
+    <string name="daily_prompt_combo_1_prompt">What made today different?</string>
+    <string name="daily_prompt_combo_2_prompt">What stood out today?</string>
+    <string name="daily_prompt_combo_3_prompt">What changed today?</string>
+    <string name="daily_prompt_combo_4_prompt">What caught your attention today?</string>
+    <string name="daily_prompt_combo_5_prompt">What felt different today?</string>
+    <string name="daily_prompt_combo_6_prompt">What was not like usual today?</string>
+    <string name="daily_prompt_combo_7_prompt">What broke the routine today?</string>
 
     <string name="home_title">Pool</string>
     <string name="home_add">Drop it</string>
     <string name="home_profile">Myself</string>
     <string name="home_not_found_user_data">First you have to add a profile picture from Profile</string>
     <string name="home_description_profile_user_photo">User profile picture</string>
+    <string name="home_daily_prompt_label">Daily Prompt</string>
+    <string name="home_daily_prompt_helper">Tap to post your daily dose</string>
+    <string name="home_reaction_picker_action">Open reaction picker</string>
 
     <string name="home_database_access_error">Could not access the database</string>
     <string name="home_not_found_user_error">User not found</string>
@@ -72,6 +85,8 @@
     <string name="home_description_img_publication_user">Image posted by user</string>
     <string name="home_image_viewer_close">Close</string>
     <string name="home_image_viewer_hint">Double tap to zoom, or use two fingers to pinch and move the image.</string>
+    <string name="home_title_expand">…</string>
+    <string name="home_title_collapse">Less</string>
 
     <string name="options_open_camera">Take a photo with the camera</string>
     <string name="options_open_gallery">Choose an image from the gallery</string>

@@ -10,9 +10,13 @@ import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
 import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCase
 import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
+import com.hvasoft.dailydose.domain.interactor.home.GetActiveDailyPromptUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
+import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCase
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
+import com.hvasoft.dailydose.domain.model.DailyPromptDay
 import com.hvasoft.dailydose.domain.model.HomeFeedAvailabilityMode
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
@@ -50,6 +54,8 @@ class HomeViewModelTest {
     private lateinit var setSnapshotReactionUseCase: SetSnapshotReactionUseCase
     private lateinit var deleteSnapshotUseCase: DeleteSnapshotUseCase
     private lateinit var syncStateFlow: MutableStateFlow<HomeFeedSyncState>
+    private lateinit var activeDailyPromptFlow: MutableStateFlow<DailyPromptAssignment?>
+    private lateinit var promptCompletionFlow: MutableStateFlow<Boolean>
     private lateinit var pagingFlow: Flow<PagingData<Snapshot>>
     private var refreshResult: Result<Unit> = Result.success(Unit)
     private lateinit var authSessionProvider: FakeAuthSessionProvider
@@ -74,6 +80,8 @@ class HomeViewModelTest {
                 retainedItemCount = 3,
             ),
         )
+        activeDailyPromptFlow = MutableStateFlow(null)
+        promptCompletionFlow = MutableStateFlow(false)
         pagingFlow = flowOf(PagingData.empty())
         getSnapshotRepliesUseCase = mockk()
         addSnapshotReplyUseCase = mockk()
@@ -94,6 +102,12 @@ class HomeViewModelTest {
                 }
 
                 override suspend fun clearOfflineSnapshots(accountId: String) = Unit
+            },
+            getActiveDailyPromptUseCase = object : GetActiveDailyPromptUseCase {
+                override fun invoke() = activeDailyPromptFlow
+            },
+            observePromptCompletionUseCase = object : ObservePromptCompletionUseCase {
+                override fun invoke() = promptCompletionFlow
             },
             getSnapshotRepliesUseCase = getSnapshotRepliesUseCase,
             addSnapshotReplyUseCase = addSnapshotReplyUseCase,
@@ -120,6 +134,90 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `uiState shows the daily prompt card when assignment exists and user has not posted`() = runTest {
+        activeDailyPromptFlow.value = DailyPromptAssignment(
+            dateKey = "2026-04-20",
+            comboId = "daily-prompt-2",
+            promptText = "What stood out today?",
+            titlePatterns = listOf(
+                "This stood out at %time",
+                "Something stood out at %time",
+            ),
+            answerFormats = listOf(
+                "{answer} · %time",
+                "{answer} at %time",
+            ),
+            assignedAt = 10L,
+        )
+        promptCompletionFlow.value = false
+
+        val collector = backgroundScope.launch {
+            viewModel.uiState.collect { }
+        }
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.shouldShowDailyPromptCard).isTrue()
+        assertThat(viewModel.uiState.value.activeDailyPrompt?.promptText)
+            .isEqualTo("What stood out today?")
+        collector.cancel()
+    }
+
+    @Test
+    fun `cachePostedSnapshot hides the daily prompt immediately after a successful post`() = runTest {
+        val postedAt = 1_713_571_200_000L
+        val promptDateKey = DailyPromptDay.dateKeyFor(postedAt)
+        activeDailyPromptFlow.value = DailyPromptAssignment(
+            dateKey = promptDateKey,
+            comboId = "daily-prompt-1",
+            promptText = "What made today different?",
+            titlePatterns = listOf(
+                "Today felt different at %time",
+                "A different moment at %time",
+            ),
+            answerFormats = listOf(
+                "{answer} · %time",
+                "{answer} at %time",
+            ),
+            assignedAt = 10L,
+        )
+        promptCompletionFlow.value = false
+
+        val collector = backgroundScope.launch {
+            viewModel.uiState.collect { }
+        }
+        advanceUntilIdle()
+
+        viewModel.cachePostedSnapshot(
+            Snapshot(
+                snapshotKey = "snapshot-1",
+                title = "Posted",
+                dateTime = postedAt,
+            ),
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.uiState.value.shouldShowDailyPromptCard).isFalse()
+        assertThat(viewModel.uiState.value.hasPostedToday).isTrue()
+        collector.cancel()
+    }
+
+    @Test
+    fun `cachePostedSnapshot emits a scroll signal after the new post is cached`() = runTest {
+        val initialSignal = viewModel.postPublishScrollSignal.value
+
+        viewModel.cachePostedSnapshot(
+            Snapshot(
+                snapshotKey = "snapshot-1",
+                title = "Posted",
+                dateTime = 1_713_571_200_000L,
+            ),
+        )
+        advanceUntilIdle()
+
+        assertThat(viewModel.postPublishScrollSignal.value).isEqualTo(initialSignal + 1)
+    }
+
+    @Test
     fun `retrySync emits connectivity error when refresh fails`() = runTest {
         refreshResult = Result.failure(IllegalStateException("offline"))
         val event = async { viewModel.events.first() }
@@ -139,6 +237,16 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { setSnapshotReactionUseCase.invoke(snapshot, "\uD83D\uDD25") }
+    }
+
+    @Test
+    fun `setSnapshotReaction supports clearing the current reaction`() = runTest {
+        val snapshot = Snapshot(snapshotKey = "snapshot-1")
+
+        viewModel.setSnapshotReaction(snapshot, null)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { setSnapshotReactionUseCase.invoke(snapshot, null) }
     }
 
     @Test

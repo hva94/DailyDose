@@ -23,6 +23,7 @@ import com.hvasoft.dailydose.data.local.toOfflineEntity
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedCurrentUserReaction
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionCount
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionSummary
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
@@ -30,6 +31,7 @@ import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import com.hvasoft.dailydose.domain.repository.HomeRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -65,6 +67,12 @@ class HomeRepositoryImpl @Inject constructor(
         val accountId = authSessionProvider.currentUserIdOrNull() ?: return flowOf(HomeFeedSyncState())
         return feedSyncStateDao.observe(accountId).map(offlineFeedMapper::toSyncState)
     }
+
+    override fun observeActiveDailyPrompt(): Flow<DailyPromptAssignment?> =
+        remoteDatabaseService.observeActiveDailyPrompt()
+
+    override fun observeUserPostingStatus(): Flow<UserPostingStatus?> =
+        remoteDatabaseService.observeUserPostingStatus()
 
     override suspend fun refreshSnapshots(): Result<Unit> {
         val accountId = authSessionProvider.currentUserIdOrNull()
@@ -112,6 +120,8 @@ class HomeRepositoryImpl @Inject constructor(
                     snapshotId = snapshot.snapshotKey,
                     ownerUserId = ownerUserId,
                     title = snapshot.title.orEmpty(),
+                    dailyPromptId = snapshot.dailyPromptId,
+                    dailyPromptText = snapshot.dailyPromptText,
                     publishedAt = cachedAt,
                     sortOrder = 0L,
                     remotePhotoUrl = snapshot.photoUrl.orEmpty(),

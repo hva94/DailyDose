@@ -8,10 +8,14 @@ import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCase
 import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCaseImpl
+import com.hvasoft.dailydose.domain.interactor.home.GetActiveDailyPromptUseCase
+import com.hvasoft.dailydose.domain.interactor.home.GetActiveDailyPromptUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCaseImpl
+import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCase
+import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
@@ -38,6 +42,16 @@ object InteractionModule {
     fun provideGetSnapshotsUseCase(
         homeRepository: HomeRepository,
     ): GetSnapshotsUseCase = GetSnapshotsUseCaseImpl(homeRepository)
+
+    @Provides
+    fun provideGetActiveDailyPromptUseCase(
+        homeRepository: HomeRepository,
+    ): GetActiveDailyPromptUseCase = GetActiveDailyPromptUseCaseImpl(homeRepository)
+
+    @Provides
+    fun provideObservePromptCompletionUseCase(
+        homeRepository: HomeRepository,
+    ): ObservePromptCompletionUseCase = ObservePromptCompletionUseCaseImpl(homeRepository)
 
     @Provides
     fun provideToggleUserLikeUseCase(

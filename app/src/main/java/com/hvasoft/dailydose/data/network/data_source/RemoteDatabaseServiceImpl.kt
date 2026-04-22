@@ -9,14 +9,23 @@ import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
 import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.config.DailyPromptCatalogProvider
+import com.hvasoft.dailydose.data.network.model.DailyPromptAssignmentDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReactionDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReplyDTO
 import com.hvasoft.dailydose.data.network.model.User
+import com.hvasoft.dailydose.data.network.model.UserPostingStatusDTO
+import com.hvasoft.dailydose.domain.model.CreateSnapshotRequest
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
+import com.hvasoft.dailydose.domain.model.DailyPromptComboSelector
+import com.hvasoft.dailydose.domain.model.DailyPromptDay
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.SnapshotTitleGenerationMode
+import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -24,6 +33,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.logging.Logger
@@ -34,6 +44,7 @@ class RemoteDatabaseServiceImpl @Inject constructor(
     private val usersDatabase: DatabaseReference,
     private val snapshotsRootStorage: StorageReference,
     private val authSessionProvider: AuthSessionProvider,
+    private val dailyPromptCatalogProvider: DailyPromptCatalogProvider,
 ) : RemoteDatabaseService {
 
     override fun getSnapshots(): Flow<List<Snapshot>> = callbackFlow {
@@ -147,6 +158,46 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                 }
             }.awaitAll().toMap()
         }
+    }
+
+    override fun observeActiveDailyPrompt(): Flow<DailyPromptAssignment?> = callbackFlow {
+        val dateKey = DailyPromptDay.currentDateKey()
+        val promptReference = dailyPromptAssignmentsReference().child(dateKey)
+        launch {
+            trySend(resolveDailyPromptAssignment(dateKey))
+        }
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(snapshot.toDailyPromptAssignment(dateKey))
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
+        }
+        promptReference.addValueEventListener(listener)
+        awaitClose { promptReference.removeEventListener(listener) }
+    }
+
+    override fun observeUserPostingStatus(): Flow<UserPostingStatus?> = callbackFlow {
+        val userId = authSessionProvider.currentUserIdOrNull()
+        if (userId.isNullOrBlank()) {
+            trySend(null)
+            close()
+            return@callbackFlow
+        }
+        val statusReference = usersDatabase.child(userId).child(Constants.USER_POSTING_STATUS_PATH)
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(snapshot.toUserPostingStatus(userId))
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                close(error.toException())
+            }
+        }
+        statusReference.addValueEventListener(listener)
+        awaitClose { statusReference.removeEventListener(listener) }
     }
 
     override suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int = withContext(Dispatchers.IO) {
@@ -283,15 +334,14 @@ class RemoteDatabaseServiceImpl @Inject constructor(
     }
 
     override suspend fun publishSnapshot(
-        localImageContentUri: String,
-        title: String,
+        request: CreateSnapshotRequest,
         onProgress: (Int) -> Unit,
     ): CreateSnapshotResult = withContext(Dispatchers.IO) {
         try {
             val currentUser = authSessionProvider.currentUserSnapshotOrNull()
                 ?: return@withContext CreateSnapshotResult.SaveFailed
             val userId = authSessionProvider.requireCurrentUserId()
-            val uri = Uri.parse(localImageContentUri)
+            val uri = Uri.parse(request.localImageContentUri)
             val key = snapshotsDatabase.push().key
                 ?: return@withContext CreateSnapshotResult.SaveFailed
 
@@ -303,22 +353,39 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             uploadTask.await()
 
             val downloadUri = uploadTask.snapshot.storage.downloadUrl.await()
+            val publishedAt = System.currentTimeMillis()
             val dto = SnapshotDTO(
                 idUserOwner = userId,
-                title = title,
-                dateTime = System.currentTimeMillis(),
+                title = request.title,
+                dateTime = publishedAt,
                 photoUrl = downloadUri.toString(),
+                dailyPromptId = request.dailyPromptId,
+                dailyPromptText = request.dailyPromptText,
+                titleGenerationMode = request.titleGenerationMode.name,
                 reactionCount = 0,
                 reactionSummary = emptyMap(),
                 replyCount = 0,
             )
             snapshotsDatabase.child(key).setValue(dto).await()
+            usersDatabase.child(userId)
+                .child(Constants.USER_POSTING_STATUS_PATH)
+                .setValue(
+                    UserPostingStatusDTO(
+                        lastPostedAt = publishedAt,
+                        lastPromptComboId = request.dailyPromptId,
+                    ),
+                )
+                .await()
             CreateSnapshotResult.Success(
                 snapshot = Snapshot(
                     title = dto.title,
                     dateTime = dto.dateTime,
                     photoUrl = dto.photoUrl,
                     idUserOwner = dto.idUserOwner,
+                    dailyPromptId = dto.dailyPromptId,
+                    dailyPromptText = dto.dailyPromptText,
+                    titleGenerationMode = dto.titleGenerationMode
+                        .let(SnapshotTitleGenerationMode::valueOf),
                     snapshotKey = key,
                     userName = currentUser.displayName,
                     userPhotoUrl = currentUser.photoUrl,
@@ -342,6 +409,17 @@ class RemoteDatabaseServiceImpl @Inject constructor(
         val dateTime = child("dateTime").getValue(Long::class.java) ?: 0L
         val photoUrl = child("photoUrl").getValue(String::class.java).orEmpty()
         val idUserOwner = child("idUserOwner").getValue(String::class.java).orEmpty()
+        val dailyPromptId = child(Constants.DAILY_PROMPT_ID_PROPERTY).getValue(String::class.java)
+            ?.takeIf(String::isNotBlank)
+        val dailyPromptText = child(Constants.DAILY_PROMPT_TEXT_PROPERTY).getValue(String::class.java)
+            ?.takeIf(String::isNotBlank)
+        val titleGenerationMode = child(Constants.TITLE_GENERATION_MODE_PROPERTY)
+            .getValue(String::class.java)
+            ?.let {
+                runCatching { SnapshotTitleGenerationMode.valueOf(it) }
+                    .getOrDefault(SnapshotTitleGenerationMode.NONE)
+            }
+            ?: SnapshotTitleGenerationMode.NONE
         val likeList = child(Constants.LIKE_LIST_PROPERTY).children
             .mapNotNull { likeEntry ->
                 likeEntry.key?.let { userId ->
@@ -386,6 +464,9 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             photoUrl = photoUrl,
             likeList = likeList,
             idUserOwner = idUserOwner,
+            dailyPromptId = dailyPromptId,
+            dailyPromptText = dailyPromptText,
+            titleGenerationMode = titleGenerationMode,
             reactionCount = resolvedReactionCount,
             reactionSummary = resolvedSummary,
             replyCount = maxOf(storedReplyCount, derivedReplyCount),
@@ -418,6 +499,83 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             migratedReactions[userId] = dto.copy(userId = userId)
         }
         return migratedReactions
+    }
+
+    private suspend fun resolveDailyPromptAssignment(dateKey: String): DailyPromptAssignment? {
+        val promptReference = dailyPromptAssignmentsReference().child(dateKey)
+        val existingAssignment = promptReference.get().await().toDailyPromptAssignment(dateKey)
+        if (existingAssignment != null) return existingAssignment
+
+        val previousDateKey = DailyPromptDay.previousDateKey(dateKey)
+        val previousPromptSnapshot = dailyPromptAssignmentsReference()
+            .child(previousDateKey)
+            .get()
+            .await()
+        val previousAssignment = previousPromptSnapshot.toDailyPromptAssignment(previousDateKey)
+        val previousComboId = previousAssignment?.comboId ?: previousPromptSnapshot.toStoredPromptComboId()
+        val combo = DailyPromptComboSelector.resolveForDay(
+            combos = dailyPromptCatalogProvider.getDailyPromptCombos(),
+            dateKey = dateKey,
+            previousComboId = previousComboId,
+        ) ?: return null
+        val dto = DailyPromptAssignmentDTO(
+            comboId = combo.comboId,
+            promptText = combo.promptText,
+            titlePatterns = combo.titlePatterns,
+            answerFormats = combo.answerFormats,
+            assignedAt = System.currentTimeMillis(),
+            previousComboId = previousComboId,
+        )
+        promptReference.setValue(dto).await()
+        return dto.toDomain(dateKey)
+    }
+
+    private fun dailyPromptAssignmentsReference(): DatabaseReference =
+        snapshotsDatabase.root.child(Constants.DAILY_PROMPT_ASSIGNMENTS_PATH)
+
+    private fun DataSnapshot.toDailyPromptAssignment(dateKey: String): DailyPromptAssignment? {
+        val dto = getValue(DailyPromptAssignmentDTO::class.java) ?: return null
+        return dto.toDomain(dateKey)
+    }
+
+    private fun DataSnapshot.toStoredPromptComboId(): String? =
+        getValue(DailyPromptAssignmentDTO::class.java)
+            ?.comboId
+            ?.takeIf(String::isNotBlank)
+
+    private fun DailyPromptAssignmentDTO.toDomain(dateKey: String): DailyPromptAssignment? {
+        val sanitizedTitlePatterns = titlePatterns
+            .map(String::trim)
+            .filter(String::isNotBlank)
+        val sanitizedAnswerFormats = answerFormats
+            .map(String::trim)
+            .filter(String::isNotBlank)
+        if (
+            comboId.isBlank() ||
+            promptText.isBlank() ||
+            sanitizedTitlePatterns.isEmpty() ||
+            sanitizedAnswerFormats.isEmpty()
+        ) {
+            return null
+        }
+        return DailyPromptAssignment(
+            dateKey = dateKey,
+            comboId = comboId,
+            promptText = promptText,
+            titlePatterns = sanitizedTitlePatterns,
+            answerFormats = sanitizedAnswerFormats,
+            assignedAt = assignedAt,
+            previousComboId = previousComboId,
+        )
+    }
+
+    private fun DataSnapshot.toUserPostingStatus(userId: String): UserPostingStatus? {
+        val dto = getValue(UserPostingStatusDTO::class.java) ?: return null
+        return UserPostingStatus(
+            userId = userId,
+            lastPostedAt = dto.lastPostedAt,
+            lastPromptComboId = dto.lastPromptComboId,
+        )
     }
 
     private companion object {

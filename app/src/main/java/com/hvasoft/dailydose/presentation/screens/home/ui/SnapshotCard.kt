@@ -2,11 +2,13 @@ package com.hvasoft.dailydose.presentation.screens.home.ui
 
 import android.content.Context
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,12 +47,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import com.hvasoft.dailydose.R
+import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.domain.common.extension_functions.isOwnedBy
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.presentation.screens.common.DefaultImageAspectRatio
@@ -64,7 +69,7 @@ import com.hvasoft.dailydose.presentation.theme.PrimaryLight
 import com.hvasoft.dailydose.presentation.theme.Unselected
 
 private const val WhiteHeartEmoji = "\uD83E\uDD0D"
-private const val PurpleHeartEmoji = "\uD83D\uDC9C"
+internal const val PurpleHeartEmoji = "\uD83D\uDC9C"
 private val ReactionOptions = listOf(
     PurpleHeartEmoji,
     "\uD83D\uDD25",
@@ -81,7 +86,7 @@ private const val ReplyButtonTag = "snapshot_reply_button"
 internal fun SnapshotCard(
     snapshot: Snapshot,
     actionPolicy: HomeFeedActionPolicy,
-    onReactionSelected: (String) -> Unit,
+    onReactionSelected: (String?) -> Unit,
     onOpenReplies: () -> Unit,
     onDelete: () -> Unit,
     onShare: () -> Unit,
@@ -112,9 +117,9 @@ internal fun SnapshotCard(
 
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
     ) {
         Column {
             Row(
@@ -226,10 +231,10 @@ internal fun SnapshotCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
+            SnapshotCopy(
+                promptText = snapshot.dailyPromptText,
+                title = snapshot.title.orEmpty(),
                 modifier = Modifier.padding(horizontal = 12.dp),
-                text = snapshot.title.orEmpty(),
-                style = MaterialTheme.typography.bodyLarge,
             )
             PostInteractionRow(
                 snapshot = snapshot,
@@ -244,11 +249,75 @@ internal fun SnapshotCard(
 }
 
 @Composable
+private fun SnapshotCopy(
+    promptText: String?,
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        promptText
+            ?.takeIf(String::isNotBlank)
+            ?.let { resolvedPromptText ->
+                Text(
+                    text = resolvedPromptText,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        ExpandableSnapshotTitle(
+            title = title,
+        )
+    }
+}
+
+@Composable
+private fun ExpandableSnapshotTitle(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    var isExpanded by remember(title) { mutableStateOf(false) }
+    var canExpand by remember(title) { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = if (isExpanded) Int.MAX_VALUE else Constants.SNAPSHOT_TITLE_COLLAPSED_MAX_LINES,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { textLayoutResult ->
+                if (!isExpanded) {
+                    canExpand = textLayoutResult.hasVisualOverflow
+                }
+            },
+        )
+        if (canExpand || isExpanded) {
+            TextButton(
+                onClick = { isExpanded = !isExpanded },
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(
+                    text = if (isExpanded) {
+                        stringResource(R.string.home_title_collapse)
+                    } else {
+                        stringResource(R.string.home_title_expand)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun PostInteractionRow(
     snapshot: Snapshot,
     replyCount: Int,
     canShareImage: Boolean,
-    onReactionSelected: (String) -> Unit,
+    onReactionSelected: (String?) -> Unit,
     onOpenReplies: () -> Unit,
     onShare: () -> Unit,
 ) {
@@ -283,7 +352,14 @@ private fun PostInteractionRow(
                         contentDescription = stringResource(R.string.home_description_button_share),
                         tint = PrimaryLight,
                     )
-                    Text(text = replyCountLabel)
+                    Text(
+                        text = replyCountLabel,
+                        modifier = Modifier.padding(start = 4.dp),
+                        color = PrimaryLight,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    )
                 }
             }
             if (snapshot.hasPendingReaction || snapshot.hasPendingReply) {
@@ -311,14 +387,17 @@ private fun PostInteractionRow(
 private fun ReactionPickerButton(
     reactionSummary: Map<String, Int>,
     currentUserReaction: String?,
-    onReactionSelected: (String) -> Unit,
+    onReactionSelected: (String?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         ReactionSummaryRow(
             summary = reactionSummary,
             currentUserReaction = currentUserReaction,
-            onClick = { expanded = true },
+            onClick = {
+                onReactionSelected(resolveQuickReactionSelection(currentUserReaction))
+            },
+            onLongClick = { expanded = true },
         )
         DropdownMenu(
             shape = MaterialTheme.shapes.extraLarge,
@@ -345,33 +424,43 @@ private fun ReactionPickerButton(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun ReactionSummaryRow(
     summary: Map<String, Int>,
     currentUserReaction: String?,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val totalCount = summary.values.sum()
+    val longClickLabel = stringResource(R.string.home_reaction_picker_action)
 
-    TextButton(
-        onClick = onClick,
+    Box(
         modifier = Modifier.testTag(ReactionButtonTag),
     ) {
-        if (summary.isEmpty() || totalCount <= 0) {
-            ReactionItem(
-                emoji = WhiteHeartEmoji,
-                isSelected = false,
-            )
-        } else {
-            val sortedReactions = summary.entries
-                .sortedWith(
-                    compareByDescending<Map.Entry<String, Int>> { it.key == currentUserReaction }
-                        .thenByDescending { it.value },
+        Row(
+            modifier = Modifier
+                .combinedClickable(
+                    role = Role.Button,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                    onLongClickLabel = longClickLabel,
                 )
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (summary.isEmpty() || totalCount <= 0) {
+                ReactionItem(
+                    emoji = WhiteHeartEmoji,
+                    isSelected = false,
+                )
+            } else {
+                val sortedReactions = summary.entries
+                    .sortedWith(
+                        compareByDescending<Map.Entry<String, Int>> { it.key == currentUserReaction }
+                            .thenByDescending { it.value },
+                    )
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
                 sortedReactions.forEach { (emoji, _) ->
                     ReactionItem(
                         emoji = emoji,
@@ -379,8 +468,9 @@ private fun ReactionSummaryRow(
                     )
                 }
                 Text(
-                    modifier = Modifier.padding(start = 4.dp),
                     text = "$totalCount",
+                    modifier = Modifier.padding(start = 4.dp),
+                    color = PrimaryLight,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                     ),
@@ -389,6 +479,13 @@ private fun ReactionSummaryRow(
         }
     }
 }
+
+internal fun resolveQuickReactionSelection(currentUserReaction: String?): String? =
+    if (currentUserReaction.isNullOrBlank()) {
+        PurpleHeartEmoji
+    } else {
+        null
+    }
 
 @Composable
 private fun ReactionItem(
@@ -442,6 +539,7 @@ private fun SnapshotCardPreview() {
                 dateTime = System.currentTimeMillis() - 3_600_000,
                 photoUrl = "",
                 idUserOwner = "preview-owner",
+                dailyPromptText = "What stood out today?",
                 userName = "Henry",
                 userPhotoUrl = "",
                 snapshotKey = "preview",

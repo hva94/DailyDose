@@ -13,6 +13,7 @@ import com.hvasoft.dailydose.data.local.OfflineItemAvailabilityStatus
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetEntity
 import com.hvasoft.dailydose.data.local.OfflineMediaDownloadStatus
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetType
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.HomeFeedAvailabilityMode
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
@@ -20,12 +21,14 @@ import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
@@ -129,6 +132,43 @@ class HomeRepositoryImplTest {
     }
 
     @Test
+    fun `observeActiveDailyPrompt returns the shared prompt assignment from remote storage`() = runTest {
+        val prompt = DailyPromptAssignment(
+            dateKey = "2026-04-20",
+            comboId = "daily-prompt-1",
+            promptText = "What made today different?",
+            titlePatterns = listOf(
+                "Today felt different at %time",
+                "A different moment at %time",
+            ),
+            answerFormats = listOf(
+                "{answer} · %time",
+                "{answer} at %time",
+            ),
+            assignedAt = 10L,
+        )
+        every { remoteDatabaseService.observeActiveDailyPrompt() } returns flowOf(prompt)
+
+        val observedPrompt = repository.observeActiveDailyPrompt().first()
+
+        assertThat(observedPrompt).isEqualTo(prompt)
+    }
+
+    @Test
+    fun `observeUserPostingStatus returns the current user completion marker`() = runTest {
+        val postingStatus = UserPostingStatus(
+            userId = accountId,
+            lastPostedAt = 1_713_571_200_000L,
+            lastPromptComboId = "daily-prompt-1",
+        )
+        every { remoteDatabaseService.observeUserPostingStatus() } returns flowOf(postingStatus)
+
+        val observedStatus = repository.observeUserPostingStatus().first()
+
+        assertThat(observedStatus).isEqualTo(postingStatus)
+    }
+
+    @Test
     fun `cachePostedSnapshot inserts the created snapshot at the top of the local cache and reuses the retained avatar`() = runTest {
         val retainedAvatarAssetId = "avatar-$accountId-$accountId"
         offlineFeedItemDao.upsertAll(
@@ -214,6 +254,29 @@ class HomeRepositoryImplTest {
         assertThat(cachedSnapshot?.reactionCount).isEqualTo(2)
         assertThat(cachedSnapshot?.reactionSummary).isEqualTo(mapOf("\u2764\uFE0F" to 2))
         assertThat(cachedSnapshot?.currentUserReaction).isEqualTo("\u2764\uFE0F")
+    }
+
+    @Test
+    fun `cachePostedSnapshot retains prompt metadata for prompt driven posts`() = runTest {
+        coEvery { remoteDatabaseService.getUserPhotoUrlOnce(accountId) } returns ""
+
+        repository.cachePostedSnapshot(
+            Snapshot(
+                title = "Sunset · 9:12 AM",
+                dateTime = 300L,
+                photoUrl = "https://example.com/prompt.jpg",
+                snapshotKey = "prompted",
+                idUserOwner = accountId,
+                userName = "Henry",
+                dailyPromptId = "daily-prompt-2",
+                dailyPromptText = "What stood out today?",
+            ),
+        )
+
+        val cachedSnapshot = offlineFeedItemDao.getBySnapshotId(accountId, "prompted")
+
+        assertThat(cachedSnapshot?.dailyPromptId).isEqualTo("daily-prompt-2")
+        assertThat(cachedSnapshot?.dailyPromptText).isEqualTo("What stood out today?")
     }
 
     @Test

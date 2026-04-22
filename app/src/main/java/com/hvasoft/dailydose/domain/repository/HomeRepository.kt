@@ -1,15 +1,19 @@
 package com.hvasoft.dailydose.domain.repository
 
 import androidx.paging.PagingData
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import kotlinx.coroutines.flow.Flow
 
 interface HomeRepository {
 
     suspend fun getPagedSnapshots(): Flow<PagingData<Snapshot>>
     fun observeSyncState(): Flow<HomeFeedSyncState>
+    fun observeActiveDailyPrompt(): Flow<DailyPromptAssignment?>
+    fun observeUserPostingStatus(): Flow<UserPostingStatus?>
     suspend fun refreshSnapshots(): Result<Unit>
     suspend fun clearOfflineSnapshots(accountId: String)
     suspend fun cachePostedSnapshot(snapshot: Snapshot)

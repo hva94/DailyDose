@@ -12,7 +12,7 @@ import androidx.room.TypeConverters
         PendingSnapshotActionEntity::class,
         OfflineSnapshotReplyEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(FeedOfflineTypeConverters::class)

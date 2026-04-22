@@ -2,6 +2,7 @@ package com.hvasoft.dailydose.data.network.model
 
 import com.google.firebase.database.Exclude
 import com.google.firebase.database.IgnoreExtraProperties
+import com.hvasoft.dailydose.domain.model.SnapshotTitleGenerationMode
 import java.sql.Timestamp
 
 @IgnoreExtraProperties
@@ -11,6 +12,9 @@ data class SnapshotDTO(
     val photoUrl: String = "",
     val likeList: Map<String, Boolean> = mutableMapOf(),
     val idUserOwner: String = "",
+    val dailyPromptId: String? = null,
+    val dailyPromptText: String? = null,
+    val titleGenerationMode: String = SnapshotTitleGenerationMode.NONE.name,
     val reactionCount: Int = 0,
     val reactionSummary: Map<String, Int> = mutableMapOf(),
     val replyCount: Int = 0,

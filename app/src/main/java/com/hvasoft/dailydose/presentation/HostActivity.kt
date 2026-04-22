@@ -138,6 +138,10 @@ class HostActivity : ComponentActivity() {
                             scrollSignal = homeScrollSignal,
                             modifier = Modifier.fillMaxSize(),
                             onShowMessage = ::showPopUpMessage,
+                            onOpenDailyPrompt = { prompt ->
+                                addViewModel.preparePromptComposer(prompt)
+                                selectedDestination = MainDestination.ADD
+                            },
                         )
                     },
                     addContent = { innerPadding ->
@@ -364,7 +368,7 @@ class HostActivity : ComponentActivity() {
                 }
             }
 
-            MainDestination.ADD -> Unit
+            MainDestination.ADD -> addViewModel.prepareStandardComposer()
             MainDestination.PROFILE -> {
                 if (!wasSelected) {
                     profileRefreshSignal += 1

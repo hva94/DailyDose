@@ -5,19 +5,28 @@ import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.ValueEventListener
 import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
 import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.config.DailyPromptCatalogProvider
+import com.hvasoft.dailydose.data.network.model.DailyPromptAssignmentDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReactionDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReplyDTO
+import com.hvasoft.dailydose.domain.model.CreateSnapshotRequest
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
+import com.hvasoft.dailydose.domain.model.DailyPromptCombo
+import com.hvasoft.dailydose.domain.model.DailyPromptComboSelector
+import com.hvasoft.dailydose.domain.model.DailyPromptDay
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -29,7 +38,9 @@ class RemoteDatabaseServiceImplTest {
     private lateinit var usersDatabase: DatabaseReference
     private lateinit var snapshotsRootStorage: StorageReference
     private lateinit var authSessionProvider: FakeAuthSessionProvider
+    private lateinit var dailyPromptCatalogProvider: DailyPromptCatalogProvider
     private lateinit var service: RemoteDatabaseServiceImpl
+    private lateinit var dailyPromptCombos: List<DailyPromptCombo>
 
     @Before
     fun setUp() {
@@ -37,11 +48,41 @@ class RemoteDatabaseServiceImplTest {
         usersDatabase = mockk(relaxed = true)
         snapshotsRootStorage = mockk(relaxed = true)
         authSessionProvider = FakeAuthSessionProvider()
+        dailyPromptCombos = listOf(
+            DailyPromptCombo(
+                comboId = "daily-prompt-1",
+                promptText = "What made today different?",
+                titlePatterns = listOf(
+                    "Today felt different at %time",
+                    "A different moment at %time",
+                ),
+                answerFormats = listOf(
+                    "{answer} · %time",
+                    "{answer} at %time",
+                ),
+            ),
+            DailyPromptCombo(
+                comboId = "daily-prompt-2",
+                promptText = "What stood out today?",
+                titlePatterns = listOf(
+                    "This stood out at %time",
+                    "Something stood out at %time",
+                ),
+                answerFormats = listOf(
+                    "{answer} · %time",
+                    "{answer} at %time",
+                ),
+            ),
+        )
+        dailyPromptCatalogProvider = object : DailyPromptCatalogProvider {
+            override fun getDailyPromptCombos(): List<DailyPromptCombo> = dailyPromptCombos
+        }
         service = RemoteDatabaseServiceImpl(
             snapshotsDatabase = snapshotsDatabase,
             usersDatabase = usersDatabase,
             snapshotsRootStorage = snapshotsRootStorage,
             authSessionProvider = authSessionProvider,
+            dailyPromptCatalogProvider = dailyPromptCatalogProvider,
         )
     }
 
@@ -53,12 +94,56 @@ class RemoteDatabaseServiceImplTest {
     @Test
     fun `publishSnapshot returns save failed when no signed in user exists`() = runTest {
         val result = service.publishSnapshot(
-            localImageContentUri = "content://images/test",
-            title = "Test",
+            request = CreateSnapshotRequest(
+                localImageContentUri = "content://images/test",
+                title = "Test",
+            ),
             onProgress = {},
         )
 
         assertThat(result).isEqualTo(CreateSnapshotResult.SaveFailed)
+    }
+
+    @Test
+    fun `observeActiveDailyPrompt persists title patterns and answer formats from the provider`() = runTest {
+        val dateKey = DailyPromptDay.currentDateKey()
+        val previousDateKey = DailyPromptDay.previousDateKey(dateKey)
+        val rootReference = mockk<DatabaseReference>()
+        val assignmentsReference = mockk<DatabaseReference>()
+        val promptReference = mockk<DatabaseReference>()
+        val previousPromptReference = mockk<DatabaseReference>()
+        val currentPromptSnapshot = mockk<DataSnapshot>()
+        val previousPromptSnapshot = mockk<DataSnapshot>()
+        val storedAssignment = slot<DailyPromptAssignmentDTO>()
+
+        every { snapshotsDatabase.root } returns rootReference
+        every { rootReference.child(Constants.DAILY_PROMPT_ASSIGNMENTS_PATH) } returns assignmentsReference
+        every { assignmentsReference.child(dateKey) } returns promptReference
+        every { assignmentsReference.child(previousDateKey) } returns previousPromptReference
+        every { promptReference.get() } returns Tasks.forResult(currentPromptSnapshot)
+        every { previousPromptReference.get() } returns Tasks.forResult(previousPromptSnapshot)
+        every { currentPromptSnapshot.getValue(DailyPromptAssignmentDTO::class.java) } returns null
+        every { previousPromptSnapshot.getValue(DailyPromptAssignmentDTO::class.java) } returns null
+        every { promptReference.setValue(capture(storedAssignment)) } returns Tasks.forResult(null)
+        every { promptReference.addValueEventListener(any()) } answers { firstArg<ValueEventListener>() }
+        every { promptReference.removeEventListener(any<ValueEventListener>()) } returns Unit
+
+        val observedPrompt = service.observeActiveDailyPrompt().first()
+        val expectedCombo = DailyPromptComboSelector.resolveForDay(
+            combos = dailyPromptCombos,
+            dateKey = dateKey,
+            previousComboId = null,
+        )!!
+
+        assertThat(observedPrompt?.comboId).isEqualTo(expectedCombo.comboId)
+        assertThat(observedPrompt?.titlePatterns).containsExactlyElementsIn(expectedCombo.titlePatterns).inOrder()
+        assertThat(observedPrompt?.answerFormats).containsExactlyElementsIn(expectedCombo.answerFormats).inOrder()
+        assertThat(storedAssignment.captured.titlePatterns)
+            .containsExactlyElementsIn(expectedCombo.titlePatterns)
+            .inOrder()
+        assertThat(storedAssignment.captured.answerFormats)
+            .containsExactlyElementsIn(expectedCombo.answerFormats)
+            .inOrder()
     }
 
     @Test

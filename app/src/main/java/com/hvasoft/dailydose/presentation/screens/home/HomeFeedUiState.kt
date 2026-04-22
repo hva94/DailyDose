@@ -1,5 +1,6 @@
 package com.hvasoft.dailydose.presentation.screens.home
 
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.HomeFeedAvailabilityMode
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
@@ -15,6 +16,10 @@ data class HomeFeedUiState(
     val actionPolicy: HomeFeedActionPolicy = HomeFeedActionPolicy.READ_ONLY_OFFLINE,
     val hasRetainedContent: Boolean = false,
     val canQueueInteractions: Boolean = false,
+    val activeDailyPrompt: DailyPromptAssignment? = null,
+    val hasPostedToday: Boolean = false,
+    val isPromptLoading: Boolean = true,
+    val promptAvailabilityMode: HomePromptAvailabilityMode = HomePromptAvailabilityMode.UNAVAILABLE,
 ) {
     val isInitialLoadInProgress: Boolean
         get() = isBackgroundRefreshing &&
@@ -24,11 +29,18 @@ data class HomeFeedUiState(
     val showsOfflineMessaging: Boolean
         get() = availabilityMode != HomeFeedAvailabilityMode.ONLINE_FRESH
 
+    val shouldShowDailyPromptCard: Boolean
+        get() = promptAvailabilityMode == HomePromptAvailabilityMode.AVAILABLE &&
+            activeDailyPrompt != null
+
     companion object {
         fun from(
             syncState: HomeFeedSyncState,
             isBackgroundRefreshing: Boolean,
             showsRefreshIndicator: Boolean,
+            activeDailyPrompt: DailyPromptAssignment?,
+            hasPostedToday: Boolean,
+            isPromptLoading: Boolean,
         ): HomeFeedUiState =
             HomeFeedUiState(
                 availabilityMode = syncState.availabilityMode,
@@ -43,8 +55,22 @@ data class HomeFeedUiState(
                 },
                 hasRetainedContent = syncState.hasRetainedContent,
                 canQueueInteractions = syncState.hasRetainedContent,
+                activeDailyPrompt = activeDailyPrompt,
+                hasPostedToday = hasPostedToday,
+                isPromptLoading = isPromptLoading,
+                promptAvailabilityMode = when {
+                    hasPostedToday -> HomePromptAvailabilityMode.HIDDEN_BY_COMPLETION
+                    activeDailyPrompt != null -> HomePromptAvailabilityMode.AVAILABLE
+                    else -> HomePromptAvailabilityMode.UNAVAILABLE
+                },
             )
     }
+}
+
+enum class HomePromptAvailabilityMode {
+    AVAILABLE,
+    UNAVAILABLE,
+    HIDDEN_BY_COMPLETION,
 }
 
 enum class HomeFeedActionPolicy {

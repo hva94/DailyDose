@@ -18,6 +18,14 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
+## 1.3.3
+- The Home feed now features a shared daily prompt card that opens a guided posting flow.
+- Daily prompt posts now generate time-based titles while still letting you edit them before publishing.
+- Daily prompt visibility is now more reliable across day changes and after posting.
+- The daily prompt card was redesigned with a cleaner publish-first layout.
+- Snapshot cards now show daily prompt context with expandable long titles.
+- Emoji reactions now support quick purple-heart taps with a long-press picker for other reactions.
+
 ## 1.3.2
 - Replies now stay available offline and refresh more reliably when you reopen the feed.
 - Pending replies now reconcile more cleanly after the app reconnects.

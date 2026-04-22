@@ -16,11 +16,14 @@ import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionEntity
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.data.network.model.User
+import com.hvasoft.dailydose.domain.model.CreateSnapshotRequest
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -224,6 +227,10 @@ internal class FakeRemoteDatabaseService(
         )
     }
 
+    override fun observeActiveDailyPrompt(): Flow<DailyPromptAssignment?> = flowOf(null)
+
+    override fun observeUserPostingStatus(): Flow<UserPostingStatus?> = flowOf(null)
+
     override suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int = 1
 
     override suspend fun getSnapshotReplies(snapshotId: String): List<SnapshotReply> =
@@ -236,12 +243,11 @@ internal class FakeRemoteDatabaseService(
     override suspend fun deleteSnapshot(snapshot: Snapshot): Int = 1
 
     override suspend fun publishSnapshot(
-        localImageContentUri: String,
-        title: String,
+        request: CreateSnapshotRequest,
         onProgress: (Int) -> Unit,
     ): CreateSnapshotResult = CreateSnapshotResult.Success(
         Snapshot(
-            title = title,
+            title = request.title,
             snapshotKey = "snapshot-created",
         ),
     )

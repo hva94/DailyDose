@@ -1,5 +1,6 @@
 package com.hvasoft.dailydose.domain.interactor.add
 
+import com.hvasoft.dailydose.domain.model.CreateSnapshotRequest
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.repository.AddSnapshotRepository
 import javax.inject.Inject
@@ -9,9 +10,8 @@ class CreateSnapshotUseCaseImpl @Inject constructor(
 ) : CreateSnapshotUseCase {
 
     override suspend fun invoke(
-        title: String,
-        localImageContentUri: String,
+        request: CreateSnapshotRequest,
         onProgress: (Int) -> Unit,
     ): CreateSnapshotResult =
-        addSnapshotRepository.publishSnapshot(localImageContentUri, title, onProgress)
+        addSnapshotRepository.publishSnapshot(request, onProgress)
 }

@@ -8,6 +8,8 @@ import com.google.firebase.storage.StorageReference
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
 import com.hvasoft.dailydose.data.auth.FirebaseAuthSessionProvider
 import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.config.AndroidResourceDailyPromptCatalogProvider
+import com.hvasoft.dailydose.data.config.DailyPromptCatalogProvider
 import com.hvasoft.dailydose.data.local.DailyDoseDatabase
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
@@ -127,12 +129,20 @@ object HomeRepositoryModule {
         @UsersDatabaseQualifier usersDatabase: DatabaseReference,
         @SnapshotsRootStorageQualifier snapshotsRootStorage: StorageReference,
         authSessionProvider: AuthSessionProvider,
+        dailyPromptCatalogProvider: DailyPromptCatalogProvider,
     ): RemoteDatabaseService = RemoteDatabaseServiceImpl(
         snapshotsDatabase = snapshotsDatabase,
         usersDatabase = usersDatabase,
         snapshotsRootStorage = snapshotsRootStorage,
         authSessionProvider = authSessionProvider,
+        dailyPromptCatalogProvider = dailyPromptCatalogProvider,
     )
+
+    @Provides
+    @Singleton
+    fun providesDailyPromptCatalogProvider(
+        @ApplicationContext context: Context,
+    ): DailyPromptCatalogProvider = AndroidResourceDailyPromptCatalogProvider(context)
 
     @Provides
     @Singleton

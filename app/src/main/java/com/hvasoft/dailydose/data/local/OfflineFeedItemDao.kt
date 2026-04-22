@@ -15,6 +15,8 @@ interface OfflineFeedItemDao {
                feed.snapshotId,
                feed.ownerUserId,
                feed.title,
+               feed.dailyPromptId,
+               feed.dailyPromptText,
                feed.publishedAt,
                feed.sortOrder,
                feed.remotePhotoUrl,

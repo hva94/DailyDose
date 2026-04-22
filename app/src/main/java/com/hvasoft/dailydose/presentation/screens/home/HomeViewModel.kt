@@ -11,9 +11,13 @@ import com.hvasoft.dailydose.di.DispatcherIO
 import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCase
 import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
+import com.hvasoft.dailydose.domain.interactor.home.GetActiveDailyPromptUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
+import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCase
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
+import com.hvasoft.dailydose.domain.model.DailyPromptDay
 import com.hvasoft.dailydose.domain.model.Snapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -28,6 +32,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,6 +44,8 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     @DispatcherIO private val dispatcherIO: CoroutineDispatcher,
     private val getSnapshotsUseCase: GetSnapshotsUseCase,
+    private val getActiveDailyPromptUseCase: GetActiveDailyPromptUseCase,
+    private val observePromptCompletionUseCase: ObservePromptCompletionUseCase,
     private val getSnapshotRepliesUseCase: GetSnapshotRepliesUseCase,
     private val addSnapshotReplyUseCase: AddSnapshotReplyUseCase,
     private val cachePostedSnapshotUseCase: CachePostedSnapshotUseCase,
@@ -51,8 +59,11 @@ class HomeViewModel @Inject constructor(
     private val isRefreshIndicatorVisible = MutableStateFlow(false)
     private val _replySheetState = MutableStateFlow(HomeReplySheetUiState())
     private val _events = MutableSharedFlow<Int>(extraBufferCapacity = 4)
+    private val _postPublishScrollSignal = MutableStateFlow(0)
+    private val localPostedPromptDateKey = MutableStateFlow<String?>(null)
     val events = _events.asSharedFlow()
     val replySheetState = _replySheetState
+    val postPublishScrollSignal = _postPublishScrollSignal
 
     @OptIn(ExperimentalPagingApi::class)
     val snapshots: Flow<PagingData<Snapshot>> = sourceSignal
@@ -61,16 +72,23 @@ class HomeViewModel @Inject constructor(
         }
         .cachedIn(viewModelScope)
 
-    val uiState = sourceSignal
-        .flatMapLatest {
+    val uiState = combine(
+        sourceSignal.flatMapLatest {
             getSnapshotsUseCase.observeSyncState()
-        }
-        .combine(isRefreshInFlight) { syncState, refreshing ->
-            syncState to refreshing
-        }
-        .combine(isRefreshIndicatorVisible) { (syncState, refreshing), showsRefreshIndicator ->
-            HomeFeedUiState.from(syncState, refreshing, showsRefreshIndicator)
-        }
+        },
+        isRefreshInFlight,
+        isRefreshIndicatorVisible,
+        sourceSignal.flatMapLatest { observePromptUiInputs() },
+    ) { syncState, refreshing, showsRefreshIndicator, promptUiInputs ->
+        HomeFeedUiState.from(
+            syncState = syncState,
+            isBackgroundRefreshing = refreshing,
+            showsRefreshIndicator = showsRefreshIndicator,
+            activeDailyPrompt = promptUiInputs.activeDailyPrompt,
+            hasPostedToday = promptUiInputs.hasPostedToday,
+            isPromptLoading = promptUiInputs.isPromptLoading,
+        )
+    }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -99,7 +117,11 @@ class HomeViewModel @Inject constructor(
 
     fun cachePostedSnapshot(snapshot: Snapshot) {
         viewModelScope.launch(dispatcherIO) {
+            localPostedPromptDateKey.value = DailyPromptDay.currentDateKey(
+                snapshot.dateTime ?: System.currentTimeMillis(),
+            )
             cachePostedSnapshotUseCase.invoke(snapshot)
+            _postPublishScrollSignal.value += 1
         }
     }
 
@@ -112,7 +134,7 @@ class HomeViewModel @Inject constructor(
 
     fun currentUserIdOrNull(): String? = authSessionProvider.currentUserIdOrNull()
 
-    fun setSnapshotReaction(snapshot: Snapshot, emoji: String) {
+    fun setSnapshotReaction(snapshot: Snapshot, emoji: String?) {
         viewModelScope.launch(dispatcherIO) {
             runCatching {
                 setSnapshotReactionUseCase.invoke(snapshot, emoji)
@@ -205,6 +227,7 @@ class HomeViewModel @Inject constructor(
     fun clearOfflineSnapshots(accountId: String) {
         viewModelScope.launch(dispatcherIO) {
             closeReplies()
+            localPostedPromptDateKey.value = null
             getSnapshotsUseCase.clearOfflineSnapshots(accountId)
             sourceSignal.value += 1
         }
@@ -286,8 +309,52 @@ class HomeViewModel @Inject constructor(
         MANUAL,
     }
 
+    private fun observePromptUiInputs() = combine(
+        getActiveDailyPromptUseCase.invoke()
+            .map { prompt ->
+                PromptLoadState(
+                    activeDailyPrompt = prompt,
+                    hasLoaded = true,
+                )
+            }
+            .onStart { emit(PromptLoadState()) },
+        observePromptCompletionUseCase.invoke()
+            .map { hasPostedToday ->
+                PostingCompletionState(
+                    hasPostedToday = hasPostedToday,
+                    hasLoaded = true,
+                )
+            }
+            .onStart { emit(PostingCompletionState()) },
+        localPostedPromptDateKey,
+    ) { promptLoadState, completionState, locallyPostedDateKey ->
+        val promptDayKey = promptLoadState.activeDailyPrompt?.dateKey ?: DailyPromptDay.currentDateKey()
+        PromptUiInputs(
+            activeDailyPrompt = promptLoadState.activeDailyPrompt,
+            hasPostedToday = completionState.hasPostedToday ||
+                locallyPostedDateKey == promptDayKey,
+            isPromptLoading = !promptLoadState.hasLoaded || !completionState.hasLoaded,
+        )
+    }
+
     private companion object {
         const val AUTO_REFRESH_STALE_MS = 10 * 60 * 1000L
         const val AUTO_REFRESH_INDICATOR_DELAY_MS = 1_000L
     }
+
+    private data class PromptUiInputs(
+        val activeDailyPrompt: DailyPromptAssignment? = null,
+        val hasPostedToday: Boolean = false,
+        val isPromptLoading: Boolean = true,
+    )
+
+    private data class PromptLoadState(
+        val activeDailyPrompt: DailyPromptAssignment? = null,
+        val hasLoaded: Boolean = false,
+    )
+
+    private data class PostingCompletionState(
+        val hasPostedToday: Boolean = false,
+        val hasLoaded: Boolean = false,
+    )
 }

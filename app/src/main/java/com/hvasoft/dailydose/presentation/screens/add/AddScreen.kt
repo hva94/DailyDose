@@ -52,6 +52,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,8 +81,7 @@ fun AddRoute(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var selectedImageUri by rememberSaveable { mutableStateOf<String?>(null) }
-    var title by rememberSaveable { mutableStateOf("") }
+    val composerState by viewModel.composerState.collectAsStateWithLifecycle()
     var showImageSourceDialog by rememberSaveable { mutableStateOf(false) }
     var titleErrorRes by remember { mutableStateOf<Int?>(null) }
     var pendingCameraUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -89,16 +89,24 @@ fun AddRoute(
     val photoPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             uri?.let {
-                selectedImageUri = uri.toString()
-                title = context.getString(R.string.add_default_title, currentTimeLabel())
+                viewModel.onImageSelected(
+                    imageUri = uri,
+                    standardDraftTitle = context.getString(R.string.add_default_title, currentTimeLabel()),
+                )
                 titleErrorRes = null
             }
         }
     val cameraLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
             if (success) {
-                selectedImageUri = pendingCameraUri
-                title = context.getString(R.string.add_default_title, currentTimeLabel())
+                pendingCameraUri
+                    ?.let(Uri::parse)
+                    ?.let { imageUri ->
+                        viewModel.onImageSelected(
+                            imageUri = imageUri,
+                            standardDraftTitle = context.getString(R.string.add_default_title, currentTimeLabel()),
+                        )
+                    }
                 titleErrorRes = null
             } else {
                 onShowMessage(R.string.add_take_picture_error)
@@ -112,8 +120,6 @@ fun AddRoute(
             is AddPostUiState.Uploading -> Unit
 
             is AddPostUiState.Success -> {
-                selectedImageUri = null
-                title = ""
                 titleErrorRes = null
                 onShowMessage(R.string.post_message_post_success)
                 runCatching {
@@ -157,28 +163,28 @@ fun AddRoute(
     AddScreenContent(
         modifier = modifier,
         contentPadding = contentPadding,
-        title = title,
+        promptHeaderText = composerState.activePrompt?.promptText,
+        answerText = composerState.answerText,
+        title = composerState.draftTitle,
         titleErrorRes = titleErrorRes,
-        imageUri = selectedImageUri?.let(Uri::parse),
+        imageUri = composerState.selectedImageUri?.let(Uri::parse),
         uiState = uiState,
+        onAnswerChange = viewModel::onAnswerChanged,
         onTitleChange = {
-            title = it
+            viewModel.onTitleChanged(it)
             if (it.isNotBlank()) titleErrorRes = null
         },
         onSelectImage = { showImageSourceDialog = true },
         onPost = {
             when {
-                selectedImageUri == null -> {
+                composerState.selectedImageUri == null -> {
                     onShowMessage(R.string.add_no_post_message)
                 }
-                title.trim().isEmpty() -> {
+                composerState.draftTitle.trim().isEmpty() -> {
                     titleErrorRes = R.string.helper_required
                 }
                 else -> {
-                    viewModel.postSnapshot(
-                        title = title.trim(),
-                        imageUri = Uri.parse(selectedImageUri),
-                    )
+                    viewModel.postSnapshot()
                 }
             }
         },
@@ -187,112 +193,146 @@ fun AddRoute(
 
 @Composable
 fun AddScreenContent(
+    promptHeaderText: String?,
+    answerText: String,
     title: String,
     titleErrorRes: Int?,
     imageUri: Uri?,
     uiState: AddPostUiState,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
+    onAnswerChange: (String) -> Unit,
     onTitleChange: (String) -> Unit,
     onSelectImage: () -> Unit,
     onPost: () -> Unit,
 ) {
     val isUploading = uiState is AddPostUiState.Uploading
     val uploadProgress = (uiState as? AddPostUiState.Uploading)?.percent ?: 0
+    val isPromptPost = promptHeaderText != null
     var imageAspectRatio by remember(imageUri) {
         mutableFloatStateOf(DefaultImageAspectRatio)
     }
-    val message = when (uiState) {
-        is AddPostUiState.Uploading -> "$uploadProgress%"
-        else -> {
-            if (imageUri == null) stringResource(R.string.post_message_title)
-            else stringResource(R.string.post_message_valid_title)
-        }
+    val headerText = promptHeaderText ?: if (imageUri == null) {
+        stringResource(R.string.post_message_title)
+    } else {
+        stringResource(R.string.post_message_valid_title)
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .padding(contentPadding)
             .consumeWindowInsets(contentPadding)
             .imePadding()
-            .verticalScroll(rememberScrollState())
             .padding(all = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(
-            space = 16.dp,
-            alignment = Alignment.CenterVertically),
     ) {
-        Text(
-            text = message,
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        )
-        if (isUploading) {
-            LinearProgressIndicator(
-                progress = { uploadProgress / 100f },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else if (imageUri != null) {
-            Spacer(modifier = Modifier.height(4.dp))
-        }
-        imageUri?.let {
-            OutlinedTextField(
-                value = title,
-                onValueChange = onTitleChange,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isUploading,
-                label = { Text(text = stringResource(R.string.add_hint_title)) },
-                isError = titleErrorRes != null,
-                supportingText = {
-                    titleErrorRes?.let {
-                        Text(text = stringResource(titleErrorRes))
-                    }
-                },
-                singleLine = true,
-            )
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(imageAspectRatio)
-                .clip(RoundedCornerShape(24.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(enabled = !isUploading, onClick = onSelectImage),
-            contentAlignment = Alignment.Center,
+        Column(
+            modifier = modifier
+                .verticalScroll(rememberScrollState())
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(
+                space = 12.dp,
+                alignment = Alignment.CenterVertically
+            ),
         ) {
-            if (imageUri == null) {
-                Image(
-                    painter = painterResource(R.drawable.ic_photo_camera),
-                    contentDescription = stringResource(R.string.add_button_select),
+            Text(
+                modifier = Modifier.fillMaxWidth(),
+                text = headerText,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 36.sp,
+                    lineHeight = 40.sp,
+                    letterSpacing = 1.2.sp,
+                ),
+                textAlign = TextAlign.Center,
+            )
+            if (isPromptPost) {
+                OutlinedTextField(
+                    value = answerText,
+                    onValueChange = onAnswerChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isUploading,
+                    label = { Text(text = stringResource(R.string.add_prompt_answer_label)) },
+                    placeholder = { Text(text = stringResource(R.string.add_prompt_answer_placeholder)) },
+                    singleLine = true,
                 )
-            } else {
-                AsyncImage(
-                    model = imageUri,
-                    contentDescription = stringResource(R.string.add_button_select),
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    onSuccess = { state ->
-                        imageAspectRatio = calculateClampedAspectRatio(
-                            width = state.result.drawable.intrinsicWidth,
-                            height = state.result.drawable.intrinsicHeight,
-                        )
+            }
+            if (isPromptPost || imageUri != null) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = onTitleChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isUploading,
+                    label = { Text(text = stringResource(R.string.add_hint_title)) },
+                    isError = titleErrorRes != null,
+                    supportingText = {
+                        titleErrorRes?.let {
+                            Text(text = stringResource(titleErrorRes))
+                        }
                     },
+                    minLines = 1,
+                    maxLines = 3,
                 )
+            }
+            if (isUploading) {
+                LinearProgressIndicator(
+                    progress = { uploadProgress / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = "$uploadProgress%",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
+            } else if (imageUri != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(imageAspectRatio)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable(enabled = !isUploading, onClick = onSelectImage),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (imageUri == null) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_photo_camera),
+                        contentDescription = stringResource(R.string.add_button_select),
+                    )
+                } else {
+                    AsyncImage(
+                        model = imageUri,
+                        contentDescription = stringResource(R.string.add_button_select),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onSuccess = { state ->
+                            imageAspectRatio = calculateClampedAspectRatio(
+                                width = state.result.drawable.intrinsicWidth,
+                                height = state.result.drawable.intrinsicHeight,
+                            )
+                        },
+                    )
+                }
             }
         }
         Button(
-            modifier = Modifier.align(Alignment.CenterHorizontally),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp),
             onClick = onPost,
             enabled = !isUploading,
         ) {
             Row(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = stringResource(R.string.add_button_post),
                     color = Color.White,
-                    fontSize = 16.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -343,10 +383,13 @@ private fun currentTimeLabel(): String =
 private fun AddScreenPreview() {
     DailyDoseTheme {
         AddScreenContent(
+            promptHeaderText = "What stood out today?",
+            answerText = "Live music and friends",
             title = "My Daily Dose at 9:12 AM",
             titleErrorRes = null,
             imageUri = Uri.parse("content://preview"),
             uiState = AddPostUiState.Idle,
+            onAnswerChange = {},
             onTitleChange = {},
             onSelectImage = {},
             onPost = {},
