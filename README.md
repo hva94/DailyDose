@@ -18,7 +18,7 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
-## 1.4.0
+## 1.4.0 - Version 5 release.
 - Other users' photos now stay blurred until you tap to reveal them.
 - Revealed photos now stay visible for you across refreshes and retained offline feed sessions.
 - Reactions, replies, and sharing now unlock only after a photo has been revealed.
