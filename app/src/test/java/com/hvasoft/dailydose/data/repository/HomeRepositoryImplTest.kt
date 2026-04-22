@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseUser
 import com.hvasoft.dailydose.MainDispatcherRule
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
+import com.hvasoft.dailydose.data.local.CachedRevealStateEntity
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.FeedSyncStateEntity
 import com.hvasoft.dailydose.data.local.OfflineFeedItemEntity
@@ -19,8 +20,10 @@ import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -44,6 +47,7 @@ class HomeRepositoryImplTest {
     private lateinit var offlineFeedItemDao: FakeOfflineFeedItemDao
     private lateinit var offlineMediaAssetDao: FakeOfflineMediaAssetDao
     private lateinit var offlineSnapshotReplyDao: FakeOfflineSnapshotReplyDao
+    private lateinit var cachedRevealStateDao: FakeCachedRevealStateDao
     private lateinit var pendingSnapshotActionDao: FakePendingSnapshotActionDao
     private lateinit var feedSyncStateDao: FakeFeedSyncStateDao
     private lateinit var remoteDatabaseService: com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
@@ -62,6 +66,7 @@ class HomeRepositoryImplTest {
         offlineFeedItemDao = FakeOfflineFeedItemDao()
         offlineMediaAssetDao = FakeOfflineMediaAssetDao()
         offlineSnapshotReplyDao = FakeOfflineSnapshotReplyDao()
+        cachedRevealStateDao = FakeCachedRevealStateDao()
         pendingSnapshotActionDao = FakePendingSnapshotActionDao()
         feedSyncStateDao = FakeFeedSyncStateDao()
         remoteDatabaseService = mockk(relaxed = true)
@@ -70,6 +75,7 @@ class HomeRepositoryImplTest {
             offlineFeedItemDao = offlineFeedItemDao,
             offlineMediaAssetDao = offlineMediaAssetDao,
             offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+            cachedRevealStateDao = cachedRevealStateDao,
             pendingSnapshotActionDao = pendingSnapshotActionDao,
             feedSyncStateDao = feedSyncStateDao,
             offlineFeedMapper = OfflineFeedMapper(),
@@ -79,6 +85,7 @@ class HomeRepositoryImplTest {
                 pendingSnapshotActionDao = pendingSnapshotActionDao,
                 offlineFeedItemDao = offlineFeedItemDao,
                 offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+                cachedRevealStateDao = cachedRevealStateDao,
             ),
             authSessionProvider = authSessionProvider,
             feedAssetStorage = mockk<FeedAssetStorage>(relaxed = true),
@@ -277,6 +284,121 @@ class HomeRepositoryImplTest {
 
         assertThat(cachedSnapshot?.dailyPromptId).isEqualTo("daily-prompt-2")
         assertThat(cachedSnapshot?.dailyPromptText).isEqualTo("What stood out today?")
+    }
+
+    @Test
+    fun `revealSnapshot marks a non-owner post visible locally and queues remote sync`() = runTest {
+        offlineFeedItemDao.upsertAll(
+            listOf(
+                OfflineFeedItemEntity(
+                    accountId = accountId,
+                    snapshotId = "snapshot-1",
+                    ownerUserId = "owner-1",
+                    title = "Hidden snapshot",
+                    publishedAt = 100L,
+                    sortOrder = 0L,
+                    remotePhotoUrl = "https://example.com/snapshot.jpg",
+                    mainImageAssetId = null,
+                    ownerDisplayName = "Alex",
+                    ownerAvatarRemoteUrl = "",
+                    ownerAvatarAssetId = null,
+                    likeCount = 0,
+                    likedByCurrentUser = false,
+                    reactionCount = 0,
+                    reactionSummary = emptyMap(),
+                    currentUserReaction = null,
+                    replyCount = 0,
+                    hasPendingReaction = false,
+                    hasPendingReply = false,
+                    legacyLikeCount = null,
+                    visibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+                    revealSyncState = SnapshotRevealSyncState.NONE,
+                    isRevealedForViewer = false,
+                    availabilityStatus = OfflineItemAvailabilityStatus.MEDIA_PARTIAL,
+                    syncedAt = 100L,
+                ),
+            ),
+        )
+        coEvery {
+            remoteDatabaseService.markSnapshotRevealed("snapshot-1", any())
+        } throws IllegalStateException("offline")
+
+        repository.revealSnapshot(
+            Snapshot(
+                snapshotKey = "snapshot-1",
+                idUserOwner = "owner-1",
+                visibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+            ),
+        )
+
+        val cachedSnapshot = offlineFeedItemDao.getBySnapshotId(accountId, "snapshot-1")
+        val revealState = cachedRevealStateDao.getBySnapshotId(accountId, "snapshot-1")
+        val pendingAction = pendingSnapshotActionDao.getBySnapshot(accountId, "snapshot-1").single()
+
+        assertThat(cachedSnapshot?.visibilityMode).isEqualTo(SnapshotVisibilityMode.VISIBLE_REVEALED)
+        assertThat(cachedSnapshot?.revealSyncState).isEqualTo(SnapshotRevealSyncState.PENDING)
+        assertThat(cachedSnapshot?.isRevealedForViewer).isTrue()
+        assertThat(revealState?.syncState).isEqualTo(SnapshotRevealSyncState.PENDING)
+        assertThat(pendingAction.actionType).isEqualTo(PendingSnapshotActionType.MARK_REVEALED)
+        assertThat(pendingAction.queueState).isEqualTo(PendingSnapshotActionQueueState.QUEUED)
+    }
+
+    @Test
+    fun `revealSnapshot treats duplicate confirmed reveals as a local no-op`() = runTest {
+        offlineFeedItemDao.upsertAll(
+            listOf(
+                OfflineFeedItemEntity(
+                    accountId = accountId,
+                    snapshotId = "snapshot-1",
+                    ownerUserId = "owner-1",
+                    title = "Already revealed",
+                    publishedAt = 100L,
+                    sortOrder = 0L,
+                    remotePhotoUrl = "https://example.com/snapshot.jpg",
+                    mainImageAssetId = null,
+                    ownerDisplayName = "Alex",
+                    ownerAvatarRemoteUrl = "",
+                    ownerAvatarAssetId = null,
+                    likeCount = 0,
+                    likedByCurrentUser = false,
+                    reactionCount = 0,
+                    reactionSummary = emptyMap(),
+                    currentUserReaction = null,
+                    replyCount = 0,
+                    hasPendingReaction = false,
+                    hasPendingReply = false,
+                    legacyLikeCount = null,
+                    visibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+                    revealSyncState = SnapshotRevealSyncState.NONE,
+                    isRevealedForViewer = false,
+                    availabilityStatus = OfflineItemAvailabilityStatus.MEDIA_PARTIAL,
+                    syncedAt = 100L,
+                ),
+            ),
+        )
+        cachedRevealStateDao.upsert(
+            CachedRevealStateEntity(
+                accountId = accountId,
+                snapshotId = "snapshot-1",
+                revealedAt = 123L,
+                syncState = SnapshotRevealSyncState.CONFIRMED,
+                updatedAt = 123L,
+            ),
+        )
+
+        repository.revealSnapshot(
+            Snapshot(
+                snapshotKey = "snapshot-1",
+                idUserOwner = "owner-1",
+                visibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+            ),
+        )
+
+        val cachedSnapshot = offlineFeedItemDao.getBySnapshotId(accountId, "snapshot-1")
+        assertThat(cachedSnapshot?.visibilityMode).isEqualTo(SnapshotVisibilityMode.VISIBLE_REVEALED)
+        assertThat(cachedSnapshot?.revealSyncState).isEqualTo(SnapshotRevealSyncState.CONFIRMED)
+        assertThat(pendingSnapshotActionDao.getBySnapshot(accountId, "snapshot-1")).isEmpty()
+        coVerify(exactly = 0) { remoteDatabaseService.markSnapshotRevealed(any(), any()) }
     }
 
     @Test
@@ -606,6 +728,7 @@ class HomeRepositoryImplTest {
             pendingSnapshotActionDao = pendingSnapshotActionDao,
             offlineFeedItemDao = offlineFeedItemDao,
             offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+            cachedRevealStateDao = cachedRevealStateDao,
         )
         coEvery {
             remoteDatabaseService.addSnapshotReply(snapshotId = "snapshot-1", reply = any())
@@ -674,6 +797,7 @@ class HomeRepositoryImplTest {
             pendingSnapshotActionDao = pendingSnapshotActionDao,
             offlineFeedItemDao = offlineFeedItemDao,
             offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+            cachedRevealStateDao = cachedRevealStateDao,
         )
 
         coordinator.flushPendingActions(accountId = accountId, rollbackOnFailure = true)

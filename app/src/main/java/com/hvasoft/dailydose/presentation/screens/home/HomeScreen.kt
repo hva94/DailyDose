@@ -22,6 +22,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.hvasoft.dailydose.R
+import com.hvasoft.dailydose.domain.common.extension_functions.canOpenExpandedImage
+import com.hvasoft.dailydose.domain.common.extension_functions.canRevealImage
 import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.presentation.screens.home.ui.ExpandedImageState
@@ -106,7 +108,8 @@ fun HomeScreen(
             shareSnapshotIfAvailable(
                 context = context,
                 snapshot = snapshot,
-                hasFullAccess = uiState.actionPolicy == HomeFeedActionPolicy.FULL_ACCESS,
+                hasFullAccess = uiState.allowRemoteMediaFallback,
+                currentUserId = currentUserId,
                 onShowMessage = onShowMessage,
                 launch = { block ->
                     scope.launch {
@@ -115,9 +118,16 @@ fun HomeScreen(
                 },
             )
         },
-        onOpenImage = { snapshot ->
+        onImageTap = { snapshot ->
+            if (snapshot.canRevealImage(currentUserId)) {
+                viewModel.revealSnapshot(snapshot)
+                return@HomeContent
+            }
+            if (!snapshot.canOpenExpandedImage(currentUserId)) {
+                return@HomeContent
+            }
             val imageModel = snapshot.preferredPhotoModel(
-                allowRemoteFallback = uiState.actionPolicy == HomeFeedActionPolicy.FULL_ACCESS,
+                allowRemoteFallback = uiState.allowRemoteMediaFallback,
             )
             if (imageModel == null) {
                 onShowMessage(R.string.home_image_unavailable_offline)

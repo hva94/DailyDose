@@ -16,6 +16,8 @@ import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCase
 import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCaseImpl
+import com.hvasoft.dailydose.domain.interactor.home.RevealSnapshotUseCase
+import com.hvasoft.dailydose.domain.interactor.home.RevealSnapshotUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCaseImpl
 import com.hvasoft.dailydose.domain.interactor.home.ToggleUserLikeUseCase
@@ -62,6 +64,11 @@ object InteractionModule {
     fun provideSetSnapshotReactionUseCase(
         homeRepository: HomeRepository,
     ): SetSnapshotReactionUseCase = SetSnapshotReactionUseCaseImpl(homeRepository)
+
+    @Provides
+    fun provideRevealSnapshotUseCase(
+        homeRepository: HomeRepository,
+    ): RevealSnapshotUseCase = RevealSnapshotUseCaseImpl(homeRepository)
 
     @Provides
     fun provideGetSnapshotRepliesUseCase(

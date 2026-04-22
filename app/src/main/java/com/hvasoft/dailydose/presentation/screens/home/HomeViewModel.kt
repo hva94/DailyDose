@@ -8,6 +8,8 @@ import androidx.paging.cachedIn
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
 import com.hvasoft.dailydose.di.DispatcherIO
+import com.hvasoft.dailydose.domain.common.extension_functions.canRevealImage
+import com.hvasoft.dailydose.domain.common.extension_functions.canUseInteractions
 import com.hvasoft.dailydose.domain.interactor.home.AddSnapshotReplyUseCase
 import com.hvasoft.dailydose.domain.interactor.home.CachePostedSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.DeleteSnapshotUseCase
@@ -15,6 +17,7 @@ import com.hvasoft.dailydose.domain.interactor.home.GetActiveDailyPromptUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCase
+import com.hvasoft.dailydose.domain.interactor.home.RevealSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
 import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.DailyPromptDay
@@ -49,6 +52,7 @@ class HomeViewModel @Inject constructor(
     private val getSnapshotRepliesUseCase: GetSnapshotRepliesUseCase,
     private val addSnapshotReplyUseCase: AddSnapshotReplyUseCase,
     private val cachePostedSnapshotUseCase: CachePostedSnapshotUseCase,
+    private val revealSnapshotUseCase: RevealSnapshotUseCase,
     private val setSnapshotReactionUseCase: SetSnapshotReactionUseCase,
     private val deleteSnapshotUseCase: DeleteSnapshotUseCase,
     private val authSessionProvider: AuthSessionProvider,
@@ -134,7 +138,20 @@ class HomeViewModel @Inject constructor(
 
     fun currentUserIdOrNull(): String? = authSessionProvider.currentUserIdOrNull()
 
+    fun revealSnapshot(snapshot: Snapshot) {
+        val currentUserId = currentUserIdOrNull()
+        if (!snapshot.canRevealImage(currentUserId)) return
+        viewModelScope.launch(dispatcherIO) {
+            runCatching {
+                revealSnapshotUseCase.invoke(snapshot)
+            }.onFailure {
+                _events.tryEmit(R.string.error_unknown)
+            }
+        }
+    }
+
     fun setSnapshotReaction(snapshot: Snapshot, emoji: String?) {
+        if (!snapshot.canUseInteractions(currentUserIdOrNull())) return
         viewModelScope.launch(dispatcherIO) {
             runCatching {
                 setSnapshotReactionUseCase.invoke(snapshot, emoji)
@@ -159,6 +176,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun openReplies(snapshot: Snapshot) {
+        if (!snapshot.canUseInteractions(currentUserIdOrNull())) return
         _replySheetState.value = HomeReplySheetUiState(
             isVisible = true,
             snapshot = snapshot,

@@ -17,6 +17,7 @@ interface HomeRepository {
     suspend fun refreshSnapshots(): Result<Unit>
     suspend fun clearOfflineSnapshots(accountId: String)
     suspend fun cachePostedSnapshot(snapshot: Snapshot)
+    suspend fun revealSnapshot(snapshot: Snapshot)
     suspend fun setSnapshotReaction(snapshot: Snapshot, emoji: String?)
     suspend fun getSnapshotReplies(snapshot: Snapshot): Result<List<SnapshotReply>>
     suspend fun addSnapshotReply(snapshot: Snapshot, text: String): Result<Unit>

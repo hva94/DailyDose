@@ -2,6 +2,19 @@ package com.hvasoft.dailydose.domain.model
 
 import java.io.File
 
+enum class SnapshotVisibilityMode {
+    VISIBLE_OWNER,
+    VISIBLE_REVEALED,
+    HIDDEN_UNREVEALED,
+    HIDDEN_PENDING_STATE,
+}
+
+enum class SnapshotRevealSyncState {
+    NONE,
+    PENDING,
+    CONFIRMED,
+}
+
 data class Snapshot(
     val title: String? = null,
     val dateTime: Long? = null,
@@ -18,6 +31,10 @@ data class Snapshot(
     val hasPendingReaction: Boolean = false,
     val hasPendingReply: Boolean = false,
     val legacyLikeCount: Int? = null,
+    val visibilityMode: SnapshotVisibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+    val revealSyncState: SnapshotRevealSyncState = SnapshotRevealSyncState.NONE,
+    val isRevealedForViewer: Boolean = false,
+    val isOwnerView: Boolean = false,
 
     val paginationId: Int = 0,
     var snapshotKey: String = "",
@@ -30,6 +47,17 @@ data class Snapshot(
     val isOfflineMediaPartial: Boolean = false,
     val syncedAt: Long? = null,
 ) {
+    val isVisibleForViewer: Boolean
+        get() = visibilityMode == SnapshotVisibilityMode.VISIBLE_OWNER ||
+            visibilityMode == SnapshotVisibilityMode.VISIBLE_REVEALED
+
+    val isHiddenForViewer: Boolean
+        get() = visibilityMode == SnapshotVisibilityMode.HIDDEN_UNREVEALED ||
+            visibilityMode == SnapshotVisibilityMode.HIDDEN_PENDING_STATE
+
+    val hasPendingRevealSync: Boolean
+        get() = revealSyncState == SnapshotRevealSyncState.PENDING
+
     fun preferredPhotoModel(allowRemoteFallback: Boolean = true): Any? =
         localPhotoFileOrNull() ?: if (allowRemoteFallback) photoUrl else null
 

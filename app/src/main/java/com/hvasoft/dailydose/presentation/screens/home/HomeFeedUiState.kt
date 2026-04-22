@@ -21,6 +21,9 @@ data class HomeFeedUiState(
     val isPromptLoading: Boolean = true,
     val promptAvailabilityMode: HomePromptAvailabilityMode = HomePromptAvailabilityMode.UNAVAILABLE,
 ) {
+    val allowRemoteMediaFallback: Boolean
+        get() = actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
+
     val isInitialLoadInProgress: Boolean
         get() = isBackgroundRefreshing &&
             lastRefreshResult == HomeFeedLastRefreshResult.NEVER_SYNCED &&

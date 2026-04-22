@@ -11,6 +11,7 @@ import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.config.DailyPromptCatalogProvider
 import com.hvasoft.dailydose.data.network.model.DailyPromptAssignmentDTO
+import com.hvasoft.dailydose.data.network.model.SnapshotRevealRecordDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReactionDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReplyDTO
 import com.hvasoft.dailydose.domain.model.CreateSnapshotRequest
@@ -156,6 +157,62 @@ class RemoteDatabaseServiceImplTest {
         }.exceptionOrNull()
 
         assertThat(failure).isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun `getRevealedSnapshots returns only the requested entries for the current viewer`() = runTest {
+        val currentUser = mockk<FirebaseUser>()
+        every { currentUser.uid } returns "user-123"
+        authSessionProvider.setCurrentUser(currentUser)
+
+        val userReference = mockk<DatabaseReference>()
+        val revealsReference = mockk<DatabaseReference>()
+        val revealsSnapshot = mockk<DataSnapshot>()
+        val firstReveal = mockk<DataSnapshot>()
+        val secondReveal = mockk<DataSnapshot>()
+
+        every { usersDatabase.child("user-123") } returns userReference
+        every { userReference.child(Constants.USER_REVEALED_SNAPSHOTS_PATH) } returns revealsReference
+        every { revealsReference.get() } returns Tasks.forResult(revealsSnapshot)
+        every { revealsSnapshot.exists() } returns true
+        every { revealsSnapshot.children } returns listOf(firstReveal, secondReveal)
+        every { firstReveal.key } returns "snapshot-1"
+        every { secondReveal.key } returns "snapshot-2"
+        every { firstReveal.getValue(SnapshotRevealRecordDTO::class.java) } returns SnapshotRevealRecordDTO(revealedAt = 111L)
+        every { secondReveal.getValue(SnapshotRevealRecordDTO::class.java) } returns SnapshotRevealRecordDTO(revealedAt = 222L)
+
+        val result = service.getRevealedSnapshots(setOf("snapshot-1"))
+
+        assertThat(result).containsExactly("snapshot-1", 111L)
+    }
+
+    @Test
+    fun `markSnapshotRevealed preserves an existing reveal timestamp`() = runTest {
+        val currentUser = mockk<FirebaseUser>()
+        every { currentUser.uid } returns "user-123"
+        authSessionProvider.setCurrentUser(currentUser)
+
+        val userReference = mockk<DatabaseReference>()
+        val revealsReference = mockk<DatabaseReference>()
+        val snapshotRevealReference = mockk<DatabaseReference>()
+        val existingSnapshot = mockk<DataSnapshot>()
+
+        every { usersDatabase.child("user-123") } returns userReference
+        every { userReference.child(Constants.USER_REVEALED_SNAPSHOTS_PATH) } returns revealsReference
+        every { revealsReference.child("snapshot-1") } returns snapshotRevealReference
+        every { snapshotRevealReference.get() } returns Tasks.forResult(existingSnapshot)
+        every { existingSnapshot.getValue(SnapshotRevealRecordDTO::class.java) } returns SnapshotRevealRecordDTO(revealedAt = 111L)
+        every { snapshotRevealReference.setValue(any()) } returns Tasks.forResult(null)
+
+        service.markSnapshotRevealed(snapshotId = "snapshot-1", revealedAt = 999L)
+
+        verify(exactly = 1) {
+            snapshotRevealReference.setValue(
+                withArg<SnapshotRevealRecordDTO> { revealRecord ->
+                    assertThat(revealRecord.revealedAt).isEqualTo(111L)
+                },
+            )
+        }
     }
 
     @Test

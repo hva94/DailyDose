@@ -2,6 +2,7 @@ package com.hvasoft.dailydose.presentation.screens.home.ui
 
 import android.content.Context
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -40,24 +41,36 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import com.hvasoft.dailydose.R
 import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.domain.common.extension_functions.canOpenExpandedImage
+import com.hvasoft.dailydose.domain.common.extension_functions.canRevealImage
+import com.hvasoft.dailydose.domain.common.extension_functions.canUseInteractions
 import com.hvasoft.dailydose.domain.common.extension_functions.isOwnedBy
+import com.hvasoft.dailydose.domain.common.extension_functions.isHiddenFromViewer
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import com.hvasoft.dailydose.presentation.screens.common.DefaultImageAspectRatio
 import com.hvasoft.dailydose.presentation.screens.common.ShimmerPlaceholder
 import com.hvasoft.dailydose.presentation.screens.common.calculateClampedAspectRatio
@@ -79,8 +92,11 @@ private val ReactionOptions = listOf(
     "\uD83D\uDE21",
 )
 
-private const val ReactionButtonTag = "snapshot_reaction_button"
-private const val ReplyButtonTag = "snapshot_reply_button"
+internal const val ReactionButtonTag = "snapshot_reaction_button"
+internal const val ReplyButtonTag = "snapshot_reply_button"
+internal const val ShareButtonTag = "snapshot_share_button"
+internal const val SnapshotImageTag = "snapshot_image_area"
+internal const val SnapshotRevealOverlayTag = "snapshot_reveal_overlay"
 
 @Composable
 internal fun SnapshotCard(
@@ -98,6 +114,7 @@ internal fun SnapshotCard(
     val resources = context.resources
     val allowRemoteFallback = actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
     val imageError = painterResource(R.drawable.image_error)
+    val isHiddenFromViewer = snapshot.isHiddenFromViewer(currentUserId)
     val mainImageModel = if (isPreview) {
         R.drawable.image_placeholder
     } else {
@@ -108,12 +125,45 @@ internal fun SnapshotCard(
     } else {
         snapshot.preferredUserPhotoModel(allowRemoteFallback)
     }
-    val canOpenImage = !isPreview && snapshot.hasAnyImageAvailable(allowRemoteFallback)
-    val canShareImage = !isPreview && snapshot.canShareImage(allowRemoteFallback)
+    val canRevealImage = !isPreview &&
+        mainImageModel != null &&
+        snapshot.canRevealImage(currentUserId)
+    val canOpenImage = !isPreview &&
+        snapshot.hasAnyImageAvailable(allowRemoteFallback) &&
+        snapshot.canOpenExpandedImage(currentUserId)
+    val canUseInteractions = snapshot.canUseInteractions(currentUserId)
+    val canShareImage = !isPreview && snapshot.canShareImage(allowRemoteFallback, currentUserId)
     val allowDelete = actionPolicy == HomeFeedActionPolicy.FULL_ACCESS
     var imageAspectRatio by remember(snapshot.snapshotKey) {
         mutableFloatStateOf(DefaultImageAspectRatio)
     }
+    var hasRevealStarted by remember(snapshot.snapshotKey, currentUserId) {
+        mutableStateOf(snapshot.visibilityMode == SnapshotVisibilityMode.VISIBLE_OWNER ||
+            snapshot.visibilityMode == SnapshotVisibilityMode.VISIBLE_REVEALED)
+    }
+    val shouldShowHiddenTreatment = isHiddenFromViewer && !hasRevealStarted
+    val blurRadius by animateDpAsState(
+        targetValue = if (shouldShowHiddenTreatment) {
+            Constants.SNAPSHOT_REVEAL_BLUR_DP.dp
+        } else {
+            0.dp
+        },
+        label = "snapshot_reveal_blur",
+    )
+    val overlayAlpha by animateFloatAsState(
+        targetValue = if (shouldShowHiddenTreatment) {
+            Constants.SNAPSHOT_REVEAL_OVERLAY_ALPHA
+        } else {
+            0f
+        },
+        label = "snapshot_reveal_overlay",
+    )
+    val imageContentDescription = if (shouldShowHiddenTreatment) {
+        stringResource(R.string.home_reveal_hidden_image_description)
+    } else {
+        stringResource(R.string.home_description_img_publication_user)
+    }
+    val revealLabel = stringResource(R.string.home_reveal_tap_to_reveal)
 
     Card(
         colors = CardDefaults.cardColors(
@@ -183,42 +233,83 @@ internal fun SnapshotCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (mainImageModel == null) {
-                LimitedMediaPlaceholder()
-            } else {
-                SubcomposeAsyncImage(
-                    model = mainImageModel,
-                    contentDescription = stringResource(R.string.home_description_img_publication_user),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.large)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .aspectRatio(imageAspectRatio)
-                        .clickable(
-                            enabled = canOpenImage,
-                            onClick = onOpenImage,
-                        ),
-                    contentScale = ContentScale.Crop,
-                    loading = {
-                        ShimmerPlaceholder(
-                            modifier = Modifier.fillMaxSize(),
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .aspectRatio(imageAspectRatio)
+                    .testTag(SnapshotImageTag)
+                    .semantics {
+                        contentDescription = imageContentDescription
+                        if (shouldShowHiddenTreatment) {
+                            stateDescription = revealLabel
+                        }
+                    }
+                    .clickable(
+                        enabled = canRevealImage || canOpenImage,
+                        role = Role.Button,
+                        onClick = {
+                            if (canRevealImage) {
+                                hasRevealStarted = true
+                            }
+                            onOpenImage()
+                        },
+                    ),
+            ) {
+                if (mainImageModel == null) {
+                    LimitedMediaPlaceholder(
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    SubcomposeAsyncImage(
+                        model = mainImageModel,
+                        contentDescription = imageContentDescription,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(blurRadius),
+                        contentScale = ContentScale.Crop,
+                        loading = {
+                            ShimmerPlaceholder(
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        },
+                        error = {
+                            Image(
+                                painter = imageError,
+                                contentDescription = imageContentDescription,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        },
+                        onSuccess = { state ->
+                            imageAspectRatio = calculateClampedAspectRatio(
+                                width = state.result.drawable.intrinsicWidth,
+                                height = state.result.drawable.intrinsicHeight,
+                            )
+                        },
+                    )
+                }
+                if (overlayAlpha > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = overlayAlpha * 0.24f))
+                            .testTag(SnapshotRevealOverlayTag),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = revealLabel,
+                            modifier = Modifier.graphicsLayer { alpha = overlayAlpha },
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 1.2.sp,
+                            ),
+                            textAlign = TextAlign.Center,
                         )
-                    },
-                    error = {
-                        Image(
-                            painter = imageError,
-                            contentDescription = stringResource(R.string.home_description_img_publication_user),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                    },
-                    onSuccess = { state ->
-                        imageAspectRatio = calculateClampedAspectRatio(
-                            width = state.result.drawable.intrinsicWidth,
-                            height = state.result.drawable.intrinsicHeight,
-                        )
-                    },
-                )
+                    }
+                }
             }
 
             if (snapshot.isOfflineMediaPartial && actionPolicy == HomeFeedActionPolicy.READ_ONLY_OFFLINE) {
@@ -239,6 +330,7 @@ internal fun SnapshotCard(
             PostInteractionRow(
                 snapshot = snapshot,
                 replyCount = snapshot.replyCount,
+                interactionsEnabled = canUseInteractions,
                 canShareImage = canShareImage,
                 onReactionSelected = onReactionSelected,
                 onOpenReplies = onOpenReplies,
@@ -316,6 +408,7 @@ private fun ExpandableSnapshotTitle(
 private fun PostInteractionRow(
     snapshot: Snapshot,
     replyCount: Int,
+    interactionsEnabled: Boolean,
     canShareImage: Boolean,
     onReactionSelected: (String?) -> Unit,
     onOpenReplies: () -> Unit,
@@ -325,6 +418,11 @@ private fun PostInteractionRow(
         replyCount.toString()
     } else {
         ""
+    }
+    val interactionTint = if (interactionsEnabled) {
+        PrimaryLight
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
     }
 
     Column(
@@ -337,10 +435,13 @@ private fun PostInteractionRow(
             ReactionPickerButton(
                 reactionSummary = snapshot.reactionSummary,
                 currentUserReaction = snapshot.currentUserReaction,
+                enabled = interactionsEnabled,
+                tint = interactionTint,
                 onReactionSelected = onReactionSelected,
             )
             TextButton(
                 onClick = onOpenReplies,
+                enabled = interactionsEnabled,
                 modifier = Modifier.testTag(ReplyButtonTag),
             ) {
                 Row(
@@ -349,20 +450,20 @@ private fun PostInteractionRow(
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_comment),
-                        contentDescription = stringResource(R.string.home_description_button_share),
-                        tint = PrimaryLight,
+                        contentDescription = stringResource(R.string.home_description_button_reply),
+                        tint = interactionTint,
                     )
                     Text(
                         text = replyCountLabel,
                         modifier = Modifier.padding(start = 4.dp),
-                        color = PrimaryLight,
+                        color = interactionTint,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontWeight = FontWeight.SemiBold,
                         ),
                     )
                 }
             }
-            if (snapshot.hasPendingReaction || snapshot.hasPendingReply) {
+            if (snapshot.hasPendingReaction || snapshot.hasPendingReply || snapshot.hasPendingRevealSync) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
@@ -372,11 +473,12 @@ private fun PostInteractionRow(
             IconButton(
                 onClick = onShare,
                 enabled = canShareImage,
+                modifier = Modifier.testTag(ShareButtonTag),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_share),
-                    contentDescription = stringResource(R.string.home_description_button_share),
-                    tint = PrimaryLight,
+                    contentDescription = stringResource(R.string.home_description_button_share_action),
+                    tint = if (canShareImage) PrimaryLight else interactionTint,
                 )
             }
         }
@@ -387,6 +489,8 @@ private fun PostInteractionRow(
 private fun ReactionPickerButton(
     reactionSummary: Map<String, Int>,
     currentUserReaction: String?,
+    enabled: Boolean,
+    tint: Color,
     onReactionSelected: (String?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -394,6 +498,8 @@ private fun ReactionPickerButton(
         ReactionSummaryRow(
             summary = reactionSummary,
             currentUserReaction = currentUserReaction,
+            enabled = enabled,
+            tint = tint,
             onClick = {
                 onReactionSelected(resolveQuickReactionSelection(currentUserReaction))
             },
@@ -428,6 +534,8 @@ private fun ReactionPickerButton(
 private fun ReactionSummaryRow(
     summary: Map<String, Int>,
     currentUserReaction: String?,
+    enabled: Boolean,
+    tint: Color,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -435,11 +543,13 @@ private fun ReactionSummaryRow(
     val longClickLabel = stringResource(R.string.home_reaction_picker_action)
 
     Box(
-        modifier = Modifier.testTag(ReactionButtonTag),
+        modifier = Modifier,
     ) {
         Row(
             modifier = Modifier
+                .testTag(ReactionButtonTag)
                 .combinedClickable(
+                    enabled = enabled,
                     role = Role.Button,
                     onClick = onClick,
                     onLongClick = onLongClick,
@@ -453,6 +563,8 @@ private fun ReactionSummaryRow(
                 ReactionItem(
                     emoji = WhiteHeartEmoji,
                     isSelected = false,
+                    enabled = enabled,
+                    tint = tint,
                 )
             } else {
                 val sortedReactions = summary.entries
@@ -465,12 +577,14 @@ private fun ReactionSummaryRow(
                     ReactionItem(
                         emoji = emoji,
                         isSelected = emoji == currentUserReaction,
+                        enabled = enabled,
+                        tint = tint,
                     )
                 }
                 Text(
                     text = "$totalCount",
                     modifier = Modifier.padding(start = 4.dp),
-                    color = PrimaryLight,
+                    color = tint,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                     ),
@@ -491,13 +605,19 @@ internal fun resolveQuickReactionSelection(currentUserReaction: String?): String
 private fun ReactionItem(
     emoji: String,
     isSelected: Boolean,
+    enabled: Boolean,
+    tint: Color,
 ) {
-    val background = if (isSelected) {
+    val background = if (!enabled) {
+        tint.copy(alpha = if (isSelected) 0.18f else 0.1f)
+    } else if (isSelected) {
         PrimaryLight.copy(alpha = 0.2f)
     } else {
         Color.Transparent
     }
-    val border = if (isSelected) {
+    val border = if (!enabled && isSelected) {
+        BorderStroke(1.dp, tint.copy(alpha = 0.5f))
+    } else if (isSelected) {
         BorderStroke(1.dp, PrimaryLight)
     } else {
         null
@@ -510,6 +630,7 @@ private fun ReactionItem(
     Box(
         modifier = Modifier
             .size(size)
+            .alpha(if (enabled) 1f else 0.45f)
             .clip(CircleShape)
             .background(background)
             .then(
@@ -523,6 +644,7 @@ private fun ReactionItem(
     ) {
         Text(
             text = emoji,
+            color = if (enabled) Color.Unspecified else tint,
             style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center,
         )
@@ -547,6 +669,9 @@ private fun SnapshotCardPreview() {
                 reactionSummary = mapOf(PurpleHeartEmoji to 2, "\uD83D\uDD25" to 1),
                 replyCount = 2,
                 currentUserReaction = PurpleHeartEmoji,
+                visibilityMode = SnapshotVisibilityMode.VISIBLE_OWNER,
+                isOwnerView = true,
+                isRevealedForViewer = true,
             ),
             actionPolicy = HomeFeedActionPolicy.FULL_ACCESS,
             onReactionSelected = {},

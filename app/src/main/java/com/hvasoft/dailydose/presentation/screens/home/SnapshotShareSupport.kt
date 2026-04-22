@@ -11,6 +11,7 @@ import androidx.core.net.toUri
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.hvasoft.dailydose.R
+import com.hvasoft.dailydose.domain.common.extension_functions.canUseInteractions
 import com.hvasoft.dailydose.domain.model.Snapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,10 +25,11 @@ internal fun shareSnapshotIfAvailable(
     context: Context,
     snapshot: Snapshot,
     hasFullAccess: Boolean,
+    currentUserId: String? = null,
     onShowMessage: (Int) -> Unit,
     launch: (suspend () -> Unit) -> Unit,
 ) {
-    if (snapshot.canShareImage(hasFullAccess).not()) {
+    if (!snapshot.canShareImage(hasFullAccess, currentUserId)) {
         onShowMessage(R.string.home_share_image_unavailable_offline)
         return
     }
@@ -114,6 +116,11 @@ private fun buildShareSnapshotIntent(
 
 internal fun Snapshot.canShareImage(allowRemoteFallback: Boolean): Boolean =
     hasRetainedMainImage() || (allowRemoteFallback && photoUrl.isNullOrBlank().not())
+
+internal fun Snapshot.canShareImage(
+    allowRemoteFallback: Boolean,
+    currentUserId: String? = null,
+): Boolean = canUseInteractions(currentUserId) && canShareImage(allowRemoteFallback)
 
 private fun buildShareCacheFile(context: Context, snapshotKey: String): File {
     val shareDirectory = File(context.cacheDir, SharedImagesDirectory).apply {

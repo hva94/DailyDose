@@ -4,6 +4,7 @@ enum class PendingSnapshotActionType {
     SET_REACTION,
     REMOVE_REACTION,
     ADD_REPLY,
+    MARK_REVEALED,
 }
 
 enum class PendingSnapshotActionQueueState {

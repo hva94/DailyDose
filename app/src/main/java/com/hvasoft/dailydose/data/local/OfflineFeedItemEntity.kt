@@ -3,6 +3,8 @@ package com.hvasoft.dailydose.data.local
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 
 @Entity(
     tableName = "offline_feed_items",
@@ -36,6 +38,9 @@ data class OfflineFeedItemEntity(
     val hasPendingReaction: Boolean = false,
     val hasPendingReply: Boolean = false,
     val legacyLikeCount: Int? = null,
+    val visibilityMode: SnapshotVisibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+    val revealSyncState: SnapshotRevealSyncState = SnapshotRevealSyncState.NONE,
+    val isRevealedForViewer: Boolean = false,
     val availabilityStatus: OfflineItemAvailabilityStatus,
     val syncedAt: Long,
 )
@@ -68,6 +73,9 @@ data class OfflineFeedItemWithAssets(
     @ColumnInfo(name = "hasPendingReaction") val hasPendingReaction: Boolean = false,
     @ColumnInfo(name = "hasPendingReply") val hasPendingReply: Boolean = false,
     @ColumnInfo(name = "legacyLikeCount") val legacyLikeCount: Int? = null,
+    @ColumnInfo(name = "visibilityMode") val visibilityMode: SnapshotVisibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+    @ColumnInfo(name = "revealSyncState") val revealSyncState: SnapshotRevealSyncState = SnapshotRevealSyncState.NONE,
+    @ColumnInfo(name = "isRevealedForViewer") val isRevealedForViewer: Boolean = false,
     @ColumnInfo(name = "availabilityStatus") val availabilityStatus: OfflineItemAvailabilityStatus,
     @ColumnInfo(name = "syncedAt") val syncedAt: Long,
     @ColumnInfo(name = "mainLocalPath") val mainLocalPath: String?,

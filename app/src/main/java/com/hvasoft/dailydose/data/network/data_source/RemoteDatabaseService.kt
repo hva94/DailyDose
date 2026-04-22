@@ -19,6 +19,8 @@ interface RemoteDatabaseService {
     suspend fun getUsersOnce(userIds: Set<String>): Map<String, User>
     fun observeActiveDailyPrompt(): Flow<DailyPromptAssignment?>
     fun observeUserPostingStatus(): Flow<UserPostingStatus?>
+    suspend fun getRevealedSnapshots(snapshotIds: Set<String>): Map<String, Long>
+    suspend fun markSnapshotRevealed(snapshotId: String, revealedAt: Long)
     suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int
     suspend fun getSnapshotReplies(snapshotId: String): List<SnapshotReply>
     suspend fun addSnapshotReply(snapshotId: String, reply: SnapshotReply): SnapshotReply

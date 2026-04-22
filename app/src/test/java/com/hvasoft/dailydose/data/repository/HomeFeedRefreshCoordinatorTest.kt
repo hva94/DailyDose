@@ -42,6 +42,7 @@ class HomeFeedRefreshCoordinatorTest {
     private lateinit var offlineFeedItemDao: FakeOfflineFeedItemDao
     private lateinit var offlineMediaAssetDao: FakeOfflineMediaAssetDao
     private lateinit var offlineSnapshotReplyDao: FakeOfflineSnapshotReplyDao
+    private lateinit var cachedRevealStateDao: FakeCachedRevealStateDao
     private lateinit var feedSyncStateDao: FakeFeedSyncStateDao
     private lateinit var profileLocalCache: ProfileLocalCache
 
@@ -70,6 +71,7 @@ class HomeFeedRefreshCoordinatorTest {
         offlineFeedItemDao = FakeOfflineFeedItemDao()
         offlineMediaAssetDao = FakeOfflineMediaAssetDao()
         offlineSnapshotReplyDao = FakeOfflineSnapshotReplyDao()
+        cachedRevealStateDao = FakeCachedRevealStateDao()
         feedSyncStateDao = FakeFeedSyncStateDao()
         profileLocalCache = ProfileLocalCache(context)
     }
@@ -368,6 +370,7 @@ class HomeFeedRefreshCoordinatorTest {
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
         offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+        cachedRevealStateDao = cachedRevealStateDao,
         feedSyncStateDao = feedSyncStateDao,
         feedAssetStorage = assetStorage,
         profileLocalCache = profileLocalCache,
@@ -382,6 +385,7 @@ class HomeFeedRefreshCoordinatorTest {
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
         offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+        cachedRevealStateDao = cachedRevealStateDao,
         feedSyncStateDao = feedSyncStateDao,
         feedAssetStorage = assetStorage,
         profileLocalCache = profileLocalCache,

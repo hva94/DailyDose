@@ -3,6 +3,7 @@ package com.hvasoft.dailydose.data.repository
 import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseUser
 import com.hvasoft.dailydose.data.auth.FakeAuthSessionProvider
+import com.hvasoft.dailydose.data.local.CachedRevealStateDao
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
@@ -46,6 +47,7 @@ class HomeRepositoryRefreshTest {
             offlineFeedItemDao = mockk<OfflineFeedItemDao>(relaxed = true),
             offlineMediaAssetDao = mockk<OfflineMediaAssetDao>(relaxed = true),
             offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+            cachedRevealStateDao = mockk<CachedRevealStateDao>(relaxed = true),
             pendingSnapshotActionDao = pendingSnapshotActionDao,
             feedSyncStateDao = mockk<FeedSyncStateDao>(relaxed = true),
             offlineFeedMapper = OfflineFeedMapper(),

@@ -1,6 +1,8 @@
 package com.hvasoft.dailydose.data.repository
 
 import com.hvasoft.dailydose.data.common.Constants
+import com.hvasoft.dailydose.data.local.CachedRevealStateDao
+import com.hvasoft.dailydose.data.local.CachedRevealStateEntity
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
 import com.hvasoft.dailydose.data.local.FeedSyncStateEntity
@@ -22,7 +24,9 @@ import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactio
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionSummary
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -38,6 +42,7 @@ class HomeFeedRefreshCoordinator @Inject constructor(
     private val offlineFeedItemDao: OfflineFeedItemDao,
     private val offlineMediaAssetDao: OfflineMediaAssetDao,
     private val offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
+    private val cachedRevealStateDao: CachedRevealStateDao,
     private val feedSyncStateDao: FeedSyncStateDao,
     private val feedAssetStorage: FeedAssetStorage,
     private val profileLocalCache: ProfileLocalCache,
@@ -51,11 +56,25 @@ class HomeFeedRefreshCoordinator @Inject constructor(
         try {
             val existingFeedItems = offlineFeedItemDao.getByAccount(accountId)
             val existingFeedItemsBySnapshotId = existingFeedItems.associateBy(OfflineFeedItemEntity::snapshotId)
+            val existingRevealStatesBySnapshotId = cachedRevealStateDao.getByAccount(accountId)
+                .associateBy(CachedRevealStateEntity::snapshotId)
             val existingAssets = offlineMediaAssetDao.getByAccount(accountId)
             val existingAssetsById = existingAssets.associateBy(OfflineMediaAssetEntity::assetId)
             val remoteSnapshots = remoteDatabaseService.getSnapshotsOnce()
                 .sortedByDescending { it.dateTime ?: 0L }
                 .take(Constants.OFFLINE_FEED_RETENTION_LIMIT)
+            val remoteRevealSnapshotIds = remoteSnapshots.mapTo(linkedSetOf()) { it.snapshotKey }
+            val remoteRevealsBySnapshotIdResult = runCatching {
+                remoteDatabaseService.getRevealedSnapshots(remoteRevealSnapshotIds)
+            }
+            val remoteRevealsBySnapshotId = remoteRevealsBySnapshotIdResult.getOrElse { failure ->
+                logger.warning(
+                    "Failed to load reveal state for ${remoteRevealSnapshotIds.size} snapshots. " +
+                        "Falling back to hidden state for non-revealed items. Cause: ${failure.message}",
+                )
+                emptyMap()
+            }
+            val didRevealLookupSucceed = remoteRevealsBySnapshotIdResult.isSuccess
             val ownerInfoByUserId = loadOwnerInfoByUserId(
                 remoteSnapshots = remoteSnapshots,
                 existingFeedItemsBySnapshotId = existingFeedItemsBySnapshotId,
@@ -68,6 +87,15 @@ class HomeFeedRefreshCoordinator @Inject constructor(
                     refreshTimestamp = refreshTimestamp,
                     ownerInfo = ownerInfoByUserId[snapshot.idUserOwner.orEmpty()] ?: OwnerInfo(),
                     existingItem = existingFeedItemsBySnapshotId[snapshot.snapshotKey.ifBlank { "snapshot_$index" }],
+                    existingRevealState = existingRevealStatesBySnapshotId[snapshot.snapshotKey.ifBlank { "snapshot_$index" }],
+                    remoteRevealedAt = remoteRevealsBySnapshotId[snapshot.snapshotKey],
+                    didRevealLookupSucceed = didRevealLookupSucceed,
+                )
+            }
+            val resolvedRevealStates = desiredRetainedItems.mapNotNull { desiredItem ->
+                desiredItem.toCachedRevealState(
+                    accountId = accountId,
+                    refreshTimestamp = refreshTimestamp,
                 )
             }
             val desiredAssetsById = linkedMapOf<String, DesiredAsset>()
@@ -80,6 +108,9 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             val repliesBySnapshotId = loadRepliesBySnapshotId(remoteSnapshots)
 
             if (canUseFastPath(desiredRetainedItems, existingFeedItems, existingAssetsById)) {
+                if (resolvedRevealStates.isNotEmpty()) {
+                    cachedRevealStateDao.upsertAll(resolvedRevealStates)
+                }
                 syncRetainedReplies(
                     accountId = accountId,
                     retainedSnapshotIds = desiredRetainedItems.map(DesiredRetainedItem::snapshotId),
@@ -141,6 +172,9 @@ class HomeFeedRefreshCoordinator @Inject constructor(
                         snapshotIds = retainedFeedItems.map(OfflineFeedItemEntity::snapshotId),
                     )
                 }
+                if (resolvedRevealStates.isNotEmpty()) {
+                    cachedRevealStateDao.upsertAll(resolvedRevealStates)
+                }
                 syncRetainedReplies(
                     accountId = accountId,
                     retainedSnapshotIds = retainedFeedItems.map(OfflineFeedItemEntity::snapshotId),
@@ -200,6 +234,7 @@ class HomeFeedRefreshCoordinator @Inject constructor(
         offlineFeedItemDao.deleteByAccount(accountId)
         offlineMediaAssetDao.deleteByAccount(accountId)
         offlineSnapshotReplyDao.deleteByAccount(accountId)
+        cachedRevealStateDao.deleteByAccount(accountId)
         feedSyncStateDao.deleteByAccount(accountId)
         feedAssetStorage.deleteFiles(retainedAssets.mapNotNull(OfflineMediaAssetEntity::localPath))
         feedAssetStorage.clearAccount(accountId)
@@ -236,6 +271,10 @@ class HomeFeedRefreshCoordinator @Inject constructor(
         val currentUserReaction: String?,
         val replyCount: Int,
         val legacyLikeCount: Int?,
+        val visibilityMode: SnapshotVisibilityMode,
+        val revealSyncState: SnapshotRevealSyncState,
+        val isRevealedForViewer: Boolean,
+        val revealedAt: Long?,
     ) {
         fun metadataMatches(existingItem: OfflineFeedItemEntity): Boolean = existingItem.copy(
             availabilityStatus = existingItem.availabilityStatus,
@@ -265,6 +304,9 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             hasPendingReaction = existingItem.hasPendingReaction,
             hasPendingReply = existingItem.hasPendingReply,
             legacyLikeCount = legacyLikeCount,
+            visibilityMode = visibilityMode,
+            revealSyncState = revealSyncState,
+            isRevealedForViewer = isRevealedForViewer,
             availabilityStatus = existingItem.availabilityStatus,
             syncedAt = existingItem.syncedAt,
         )
@@ -295,6 +337,9 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             hasPendingReaction = false,
             hasPendingReply = false,
             legacyLikeCount = legacyLikeCount,
+            visibilityMode = visibilityMode,
+            revealSyncState = revealSyncState,
+            isRevealedForViewer = isRevealedForViewer,
             availabilityStatus = if (mainImageAsset.downloadStatus == OfflineMediaDownloadStatus.READY) {
                 OfflineItemAvailabilityStatus.FULLY_AVAILABLE
             } else {
@@ -302,6 +347,21 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             },
             syncedAt = refreshTimestamp,
         )
+
+        fun toCachedRevealState(
+            accountId: String,
+            refreshTimestamp: Long,
+        ): CachedRevealStateEntity? {
+            val resolvedRevealedAt = revealedAt ?: return null
+            if (visibilityMode != SnapshotVisibilityMode.VISIBLE_REVEALED) return null
+            return CachedRevealStateEntity(
+                accountId = accountId,
+                snapshotId = snapshotId,
+                revealedAt = resolvedRevealedAt,
+                syncState = revealSyncState,
+                updatedAt = refreshTimestamp,
+            )
+        }
     }
 
     private suspend fun loadOwnerInfoByUserId(
@@ -348,9 +408,27 @@ class HomeFeedRefreshCoordinator @Inject constructor(
         refreshTimestamp: Long,
         ownerInfo: OwnerInfo,
         existingItem: OfflineFeedItemEntity?,
+        existingRevealState: CachedRevealStateEntity?,
+        remoteRevealedAt: Long?,
+        didRevealLookupSucceed: Boolean,
     ): DesiredRetainedItem {
         val snapshotId = snapshot.snapshotKey.ifBlank { "snapshot_$sortOrder" }
         val ownerUserId = snapshot.idUserOwner.orEmpty()
+        val isOwnerView = ownerUserId == accountId
+        val resolvedRevealedAt = remoteRevealedAt ?: existingRevealState?.revealedAt
+        val isRevealedForViewer = isOwnerView || resolvedRevealedAt != null || existingItem?.isRevealedForViewer == true
+        val revealSyncState = when {
+            isOwnerView -> SnapshotRevealSyncState.CONFIRMED
+            remoteRevealedAt != null -> SnapshotRevealSyncState.CONFIRMED
+            existingRevealState != null -> existingRevealState.syncState
+            else -> SnapshotRevealSyncState.NONE
+        }
+        val visibilityMode = when {
+            isOwnerView -> SnapshotVisibilityMode.VISIBLE_OWNER
+            isRevealedForViewer -> SnapshotVisibilityMode.VISIBLE_REVEALED
+            didRevealLookupSucceed -> SnapshotVisibilityMode.HIDDEN_UNREVEALED
+            else -> SnapshotVisibilityMode.HIDDEN_PENDING_STATE
+        }
         val resolvedOwnerDisplayName = ownerInfo.displayName
             .ifBlank { existingItem?.ownerDisplayName.orEmpty() }
             .ifBlank { snapshot.userName.orEmpty() }
@@ -392,6 +470,10 @@ class HomeFeedRefreshCoordinator @Inject constructor(
             currentUserReaction = snapshot.normalizedCurrentUserReaction(accountId),
             replyCount = snapshot.replyCount,
             legacyLikeCount = snapshot.likeList?.size,
+            visibilityMode = visibilityMode,
+            revealSyncState = revealSyncState,
+            isRevealedForViewer = isRevealedForViewer,
+            revealedAt = resolvedRevealedAt,
         )
     }
 

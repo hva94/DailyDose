@@ -55,7 +55,7 @@ internal fun HomeContent(
     onReactionSelected: (Snapshot, String?) -> Unit,
     onOpenReplies: (Snapshot) -> Unit,
     onShare: (Snapshot) -> Unit,
-    onOpenImage: (Snapshot) -> Unit,
+    onImageTap: (Snapshot) -> Unit,
     onRequestDelete: (Snapshot) -> Unit,
 ) {
     val context = LocalContext.current
@@ -165,7 +165,7 @@ internal fun HomeContent(
                                 onOpenReplies = { onOpenReplies(snapshot) },
                                 onDelete = { onRequestDelete(snapshot) },
                                 onShare = { onShare(snapshot) },
-                                onOpenImage = { onOpenImage(snapshot) },
+                                onOpenImage = { onImageTap(snapshot) },
                                 isPreview = LocalInspectionMode.current,
                                 context = context,
                                 currentUserId = currentUserId,

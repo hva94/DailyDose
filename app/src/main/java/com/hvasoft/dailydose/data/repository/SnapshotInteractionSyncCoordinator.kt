@@ -1,5 +1,7 @@
 package com.hvasoft.dailydose.data.repository
 
+import com.hvasoft.dailydose.data.local.CachedRevealStateDao
+import com.hvasoft.dailydose.data.local.CachedRevealStateEntity
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
 import com.hvasoft.dailydose.data.local.OfflineSnapshotReplyDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionEntity
@@ -8,8 +10,10 @@ import com.hvasoft.dailydose.data.local.toOfflineEntity
 import com.hvasoft.dailydose.data.network.data_source.RemoteDatabaseService
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import java.util.Base64
 import javax.inject.Inject
 
@@ -18,6 +22,7 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
     private val pendingSnapshotActionDao: PendingSnapshotActionDao,
     private val offlineFeedItemDao: OfflineFeedItemDao,
     private val offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
+    private val cachedRevealStateDao: CachedRevealStateDao,
 ) {
 
     suspend fun flushPendingActions(
@@ -77,11 +82,28 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
                             listOf(confirmedReply.toOfflineEntity(action.accountId)),
                         )
                     }
+
+                    PendingSnapshotActionType.MARK_REVEALED -> {
+                        val revealedAt = decodeRevealTimestamp(action.payload)
+                        remoteDatabaseService.markSnapshotRevealed(
+                            snapshotId = action.snapshotId,
+                            revealedAt = revealedAt,
+                        )
+                        cachedRevealStateDao.upsert(
+                            CachedRevealStateEntity(
+                                accountId = action.accountId,
+                                snapshotId = action.snapshotId,
+                                revealedAt = revealedAt,
+                                syncState = SnapshotRevealSyncState.CONFIRMED,
+                                updatedAt = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
                 }
                 pendingSnapshotActionDao.deleteById(action.actionId)
                 applied = true
             } catch (_: Exception) {
-                if (rollbackOnFailure) {
+                if (rollbackOnFailure && action.actionType != PendingSnapshotActionType.MARK_REVEALED) {
                     if (action.actionType == PendingSnapshotActionType.ADD_REPLY) {
                         val localReply = decodeReplyPayload(action.snapshotId, action.payload)
                         offlineSnapshotReplyDao.deleteByReplyId(
@@ -116,8 +138,25 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
 
     suspend fun refreshPendingFlags(accountId: String, snapshotId: String) {
         val cachedItem = offlineFeedItemDao.getBySnapshotId(accountId, snapshotId) ?: return
+        val cachedRevealState = cachedRevealStateDao.getBySnapshotId(accountId, snapshotId)
         val actions = pendingSnapshotActionDao.getBySnapshot(accountId, snapshotId)
             .filter { it.queueState == PendingSnapshotActionQueueState.QUEUED || it.queueState == PendingSnapshotActionQueueState.IN_FLIGHT }
+        val hasPendingReveal = actions.any { it.actionType == PendingSnapshotActionType.MARK_REVEALED }
+        val isOwnerView = cachedItem.ownerUserId == accountId
+        val isRevealedForViewer = isOwnerView || hasPendingReveal || cachedRevealState != null || cachedItem.isRevealedForViewer
+        val revealSyncState = when {
+            isOwnerView -> SnapshotRevealSyncState.CONFIRMED
+            hasPendingReveal -> SnapshotRevealSyncState.PENDING
+            cachedRevealState != null -> cachedRevealState.syncState
+            else -> SnapshotRevealSyncState.NONE
+        }
+        val visibilityMode = when {
+            isOwnerView -> SnapshotVisibilityMode.VISIBLE_OWNER
+            isRevealedForViewer -> SnapshotVisibilityMode.VISIBLE_REVEALED
+            cachedItem.visibilityMode == SnapshotVisibilityMode.HIDDEN_PENDING_STATE ->
+                SnapshotVisibilityMode.HIDDEN_PENDING_STATE
+            else -> SnapshotVisibilityMode.HIDDEN_UNREVEALED
+        }
         offlineFeedItemDao.upsertAll(
             listOf(
                 cachedItem.copy(
@@ -126,6 +165,9 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
                             it.actionType == PendingSnapshotActionType.REMOVE_REACTION
                     },
                     hasPendingReply = actions.any { it.actionType == PendingSnapshotActionType.ADD_REPLY },
+                    visibilityMode = visibilityMode,
+                    revealSyncState = revealSyncState,
+                    isRevealedForViewer = isRevealedForViewer,
                 ),
             ),
         )
@@ -142,6 +184,11 @@ class SnapshotInteractionSyncCoordinator @Inject constructor(
 
         fun decodeReactionEmoji(payload: String): String? =
             payload.takeIf(String::isNotBlank)?.let(::decodePart)?.takeIf(String::isNotBlank)
+
+        fun encodeRevealPayload(revealedAt: Long): String = encodePart(revealedAt.toString())
+
+        fun decodeRevealTimestamp(payload: String): Long =
+            decodePart(payload).toLongOrNull() ?: 0L
 
         fun encodeReplyPayload(reply: SnapshotReply): String = listOf(
             reply.replyId,

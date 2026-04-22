@@ -14,6 +14,7 @@ import com.hvasoft.dailydose.domain.interactor.home.GetActiveDailyPromptUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotRepliesUseCase
 import com.hvasoft.dailydose.domain.interactor.home.GetSnapshotsUseCase
 import com.hvasoft.dailydose.domain.interactor.home.ObservePromptCompletionUseCase
+import com.hvasoft.dailydose.domain.interactor.home.RevealSnapshotUseCase
 import com.hvasoft.dailydose.domain.interactor.home.SetSnapshotReactionUseCase
 import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.DailyPromptDay
@@ -23,6 +24,7 @@ import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
 import com.hvasoft.dailydose.domain.model.Snapshot
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -51,6 +53,7 @@ class HomeViewModelTest {
     private val accountId = "user-123"
     private lateinit var getSnapshotRepliesUseCase: GetSnapshotRepliesUseCase
     private lateinit var addSnapshotReplyUseCase: AddSnapshotReplyUseCase
+    private lateinit var revealSnapshotUseCase: RevealSnapshotUseCase
     private lateinit var setSnapshotReactionUseCase: SetSnapshotReactionUseCase
     private lateinit var deleteSnapshotUseCase: DeleteSnapshotUseCase
     private lateinit var syncStateFlow: MutableStateFlow<HomeFeedSyncState>
@@ -85,6 +88,7 @@ class HomeViewModelTest {
         pagingFlow = flowOf(PagingData.empty())
         getSnapshotRepliesUseCase = mockk()
         addSnapshotReplyUseCase = mockk()
+        revealSnapshotUseCase = mockk(relaxed = true)
         setSnapshotReactionUseCase = mockk(relaxed = true)
         deleteSnapshotUseCase = mockk(relaxed = true)
 
@@ -114,6 +118,7 @@ class HomeViewModelTest {
             cachePostedSnapshotUseCase = object : CachePostedSnapshotUseCase {
                 override suspend fun invoke(snapshot: Snapshot) = Unit
             },
+            revealSnapshotUseCase = revealSnapshotUseCase,
             setSnapshotReactionUseCase = setSnapshotReactionUseCase,
             deleteSnapshotUseCase = deleteSnapshotUseCase,
             authSessionProvider = authSessionProvider,
@@ -230,8 +235,22 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `revealSnapshot delegates hidden posts to the reveal use case`() = runTest {
+        val snapshot = Snapshot(
+            snapshotKey = "snapshot-1",
+            idUserOwner = "owner-1",
+            visibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+        )
+
+        viewModel.revealSnapshot(snapshot)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { revealSnapshotUseCase.invoke(snapshot) }
+    }
+
+    @Test
     fun `setSnapshotReaction delegates to the new use case`() = runTest {
-        val snapshot = Snapshot(snapshotKey = "snapshot-1")
+        val snapshot = visibleSnapshot(snapshotKey = "snapshot-1")
 
         viewModel.setSnapshotReaction(snapshot, "\uD83D\uDD25")
         advanceUntilIdle()
@@ -241,7 +260,7 @@ class HomeViewModelTest {
 
     @Test
     fun `setSnapshotReaction supports clearing the current reaction`() = runTest {
-        val snapshot = Snapshot(snapshotKey = "snapshot-1")
+        val snapshot = visibleSnapshot(snapshotKey = "snapshot-1")
 
         viewModel.setSnapshotReaction(snapshot, null)
         advanceUntilIdle()
@@ -251,7 +270,7 @@ class HomeViewModelTest {
 
     @Test
     fun `openReplies loads reply sheet content`() = runTest {
-        val snapshot = Snapshot(snapshotKey = "snapshot-1", title = "Hello")
+        val snapshot = visibleSnapshot(snapshotKey = "snapshot-1", title = "Hello")
         val replies = listOf(
             SnapshotReply(
                 replyId = "reply-1",
@@ -277,7 +296,7 @@ class HomeViewModelTest {
 
     @Test
     fun `openReplies exposes the empty state when no replies are returned`() = runTest {
-        val snapshot = Snapshot(snapshotKey = "snapshot-1", title = "Hello")
+        val snapshot = visibleSnapshot(snapshotKey = "snapshot-1", title = "Hello")
         coEvery { getSnapshotRepliesUseCase.invoke(snapshot) } returns Result.success(emptyList())
 
         viewModel.openReplies(snapshot)
@@ -290,7 +309,7 @@ class HomeViewModelTest {
 
     @Test
     fun `openReplies keeps the sheet open and shows a retryable load error`() = runTest {
-        val snapshot = Snapshot(snapshotKey = "snapshot-1", title = "Hello")
+        val snapshot = visibleSnapshot(snapshotKey = "snapshot-1", title = "Hello")
         coEvery {
             getSnapshotRepliesUseCase.invoke(snapshot)
         } returns Result.failure(IllegalStateException("offline"))
@@ -305,7 +324,7 @@ class HomeViewModelTest {
 
     @Test
     fun `submitReply maps blank validation failure to composer feedback`() = runTest {
-        val snapshot = Snapshot(snapshotKey = "snapshot-1")
+        val snapshot = visibleSnapshot(snapshotKey = "snapshot-1")
         coEvery {
             getSnapshotRepliesUseCase.invoke(snapshot)
         } returns Result.success(emptyList())
@@ -321,6 +340,21 @@ class HomeViewModelTest {
 
         assertThat(viewModel.replySheetState.value.composerMessageRes).isEqualTo(R.string.home_reply_blank_error)
         assertThat(viewModel.replySheetState.value.isSubmitting).isFalse()
+    }
+
+    @Test
+    fun `openReplies ignores hidden snapshots until they are revealed`() = runTest {
+        val snapshot = Snapshot(
+            snapshotKey = "snapshot-1",
+            idUserOwner = "owner-1",
+            visibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+        )
+
+        viewModel.openReplies(snapshot)
+        advanceUntilIdle()
+
+        assertThat(viewModel.replySheetState.value.isVisible).isFalse()
+        coVerify(exactly = 0) { getSnapshotRepliesUseCase.invoke(any()) }
     }
 
     @Test
@@ -448,4 +482,16 @@ class HomeViewModelTest {
         advanceUntilIdle()
         collector.cancel()
     }
+
+    private fun visibleSnapshot(
+        snapshotKey: String,
+        title: String = "",
+    ): Snapshot = Snapshot(
+        snapshotKey = snapshotKey,
+        title = title,
+        idUserOwner = accountId,
+        visibilityMode = SnapshotVisibilityMode.VISIBLE_OWNER,
+        isOwnerView = true,
+        isRevealedForViewer = true,
+    )
 }

@@ -4,7 +4,9 @@ import androidx.room.TypeConverter
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
 import com.hvasoft.dailydose.domain.model.HomeFeedLastRefreshResult
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import java.util.Base64
 
 class FeedOfflineTypeConverters {
@@ -50,6 +52,20 @@ class FeedOfflineTypeConverters {
     @TypeConverter
     fun toPendingSnapshotActionQueueState(value: String?): PendingSnapshotActionQueueState? =
         value?.let(PendingSnapshotActionQueueState::valueOf)
+
+    @TypeConverter
+    fun fromSnapshotRevealSyncState(value: SnapshotRevealSyncState?): String? = value?.name
+
+    @TypeConverter
+    fun toSnapshotRevealSyncState(value: String?): SnapshotRevealSyncState? =
+        value?.let(SnapshotRevealSyncState::valueOf)
+
+    @TypeConverter
+    fun fromSnapshotVisibilityMode(value: SnapshotVisibilityMode?): String? = value?.name
+
+    @TypeConverter
+    fun toSnapshotVisibilityMode(value: String?): SnapshotVisibilityMode? =
+        value?.let(SnapshotVisibilityMode::valueOf)
 
     @TypeConverter
     fun fromSnapshotReplyDeliveryState(value: SnapshotReplyDeliveryState?): String? = value?.name

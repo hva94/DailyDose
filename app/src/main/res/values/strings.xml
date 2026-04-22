@@ -40,6 +40,8 @@
     <string name="home_image_unavailable_offline">This image is not available offline yet.</string>
     <string name="home_like_offline_unavailable">Likes are unavailable while viewing offline content.</string>
     <string name="home_delete_offline_unavailable">Deleting snapshots is unavailable while viewing offline content.</string>
+    <string name="home_reveal_tap_to_reveal">Tap to reveal</string>
+    <string name="home_reveal_hidden_image_description">Hidden image. Tap to reveal.</string>
     <string name="home_reply_sheet_title">Replies</string>
     <string name="home_reply_empty_title">No replies yet</string>
     <string name="home_reply_empty_message">Start the conversation with the first reply.</string>
@@ -80,6 +82,8 @@
     <string name="profile_version_label">Version %1$s</string>
 
     <string name="home_description_button_delete">Delete button</string>
+    <string name="home_description_button_reply">Reply</string>
+    <string name="home_description_button_share_action">Share snapshot</string>
     <string name="home_description_button_share">I want to share with you %1$s</string>
     <string name="home_description_title_share">Share Media</string>
     <string name="home_description_img_publication_user">Image posted by user</string>

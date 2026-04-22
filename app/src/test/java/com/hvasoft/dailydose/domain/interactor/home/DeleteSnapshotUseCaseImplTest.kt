@@ -18,7 +18,7 @@ class DeleteSnapshotUseCaseImplTest {
 
     @Before
     fun setUp() {
-        homeRepository = mockk()
+        homeRepository = mockk(relaxed = true)
         useCase = DeleteSnapshotUseCaseImpl(homeRepository)
     }
 

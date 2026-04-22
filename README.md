@@ -18,6 +18,14 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
+## 1.4.0
+- Other users' photos now stay blurred until you tap to reveal them.
+- Revealed photos now stay visible for you across refreshes and retained offline feed sessions.
+- Reactions, replies, and sharing now unlock only after a photo has been revealed.
+- The first tap on a hidden photo now reveals it in place instead of opening full screen.
+- Hidden-photo controls now use a more muted disabled style for a clearer locked state.
+- Reveal handling is now more consistent across reconnects, retained feed state, and account changes.
+
 ## 1.3.3
 - The Home feed now features a shared daily prompt card that opens a guided posting flow.
 - Daily prompt posts now generate time-based titles while still letting you edit them before publishing.

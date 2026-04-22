@@ -11,8 +11,9 @@ import androidx.room.TypeConverters
         FeedSyncStateEntity::class,
         PendingSnapshotActionEntity::class,
         OfflineSnapshotReplyEntity::class,
+        CachedRevealStateEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(FeedOfflineTypeConverters::class)
@@ -22,4 +23,5 @@ abstract class DailyDoseDatabase : RoomDatabase() {
     abstract fun feedSyncStateDao(): FeedSyncStateDao
     abstract fun pendingSnapshotActionDao(): PendingSnapshotActionDao
     abstract fun offlineSnapshotReplyDao(): OfflineSnapshotReplyDao
+    abstract fun cachedRevealStateDao(): CachedRevealStateDao
 }

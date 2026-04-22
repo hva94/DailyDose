@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -105,6 +106,26 @@ class SnapshotShareSupportTest {
         assertThat(remoteSnapshot.canShareImage(allowRemoteFallback = true)).isTrue()
         assertThat(remoteSnapshot.canShareImage(allowRemoteFallback = false)).isFalse()
         assertThat(missingSnapshot.canShareImage(allowRemoteFallback = true)).isFalse()
+    }
+
+    @Test
+    fun `canShareImage blocks hidden posts for the current viewer`() {
+        val localFile = createTempDirectory("share-hidden").toFile().resolve("local.jpg").apply {
+            writeText("local")
+        }
+        val hiddenSnapshot = Snapshot(
+            snapshotKey = "snapshot-hidden",
+            localPhotoPath = localFile.absolutePath,
+            idUserOwner = "owner-2",
+            visibilityMode = SnapshotVisibilityMode.HIDDEN_UNREVEALED,
+        )
+        val revealedSnapshot = hiddenSnapshot.copy(
+            visibilityMode = SnapshotVisibilityMode.VISIBLE_REVEALED,
+            isRevealedForViewer = true,
+        )
+
+        assertThat(hiddenSnapshot.canShareImage(allowRemoteFallback = false, currentUserId = "viewer-1")).isFalse()
+        assertThat(revealedSnapshot.canShareImage(allowRemoteFallback = false, currentUserId = "viewer-1")).isTrue()
     }
 
     private fun mockContext(cacheDir: File): Context {

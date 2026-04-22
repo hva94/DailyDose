@@ -11,6 +11,7 @@ import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.config.AndroidResourceDailyPromptCatalogProvider
 import com.hvasoft.dailydose.data.config.DailyPromptCatalogProvider
 import com.hvasoft.dailydose.data.local.DailyDoseDatabase
+import com.hvasoft.dailydose.data.local.CachedRevealStateDao
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
@@ -73,6 +74,7 @@ object HomeRepositoryModule {
         offlineFeedItemDao: OfflineFeedItemDao,
         offlineMediaAssetDao: OfflineMediaAssetDao,
         offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
+        cachedRevealStateDao: CachedRevealStateDao,
         pendingSnapshotActionDao: PendingSnapshotActionDao,
         feedSyncStateDao: FeedSyncStateDao,
         offlineFeedMapper: OfflineFeedMapper,
@@ -85,6 +87,7 @@ object HomeRepositoryModule {
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
         offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+        cachedRevealStateDao = cachedRevealStateDao,
         pendingSnapshotActionDao = pendingSnapshotActionDao,
         feedSyncStateDao = feedSyncStateDao,
         offlineFeedMapper = offlineFeedMapper,
@@ -175,6 +178,10 @@ object HomeRepositoryModule {
         database.offlineSnapshotReplyDao()
 
     @Provides
+    fun providesCachedRevealStateDao(database: DailyDoseDatabase): CachedRevealStateDao =
+        database.cachedRevealStateDao()
+
+    @Provides
     @Singleton
     fun providesOfflineFeedMapper(): OfflineFeedMapper = OfflineFeedMapper()
 
@@ -199,6 +206,7 @@ object HomeRepositoryModule {
         offlineFeedItemDao: OfflineFeedItemDao,
         offlineMediaAssetDao: OfflineMediaAssetDao,
         offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
+        cachedRevealStateDao: CachedRevealStateDao,
         feedSyncStateDao: FeedSyncStateDao,
         feedAssetStorage: FeedAssetStorage,
         profileLocalCache: ProfileLocalCache,
@@ -209,6 +217,7 @@ object HomeRepositoryModule {
         offlineFeedItemDao = offlineFeedItemDao,
         offlineMediaAssetDao = offlineMediaAssetDao,
         offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+        cachedRevealStateDao = cachedRevealStateDao,
         feedSyncStateDao = feedSyncStateDao,
         feedAssetStorage = feedAssetStorage,
         profileLocalCache = profileLocalCache,
@@ -222,10 +231,12 @@ object HomeRepositoryModule {
         pendingSnapshotActionDao: PendingSnapshotActionDao,
         offlineFeedItemDao: OfflineFeedItemDao,
         offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
+        cachedRevealStateDao: CachedRevealStateDao,
     ): SnapshotInteractionSyncCoordinator = SnapshotInteractionSyncCoordinator(
         remoteDatabaseService = remoteDatabaseService,
         pendingSnapshotActionDao = pendingSnapshotActionDao,
         offlineFeedItemDao = offlineFeedItemDao,
         offlineSnapshotReplyDao = offlineSnapshotReplyDao,
+        cachedRevealStateDao = cachedRevealStateDao,
     )
 }

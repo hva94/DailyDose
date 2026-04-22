@@ -7,9 +7,11 @@ object Constants {
     const val REACTIONS_PATH = "reactions"
     const val REPLIES_PATH = "replies"
     const val USERS_PATH = "users"
+    const val USER_REVEALED_SNAPSHOTS_PATH = "revealedSnapshots"
     const val USERNAME_PATH = "userName"
     const val PHOTO_URL_PATH = "photoUrl"
     const val USER_POSTING_STATUS_PATH = "postingStatus"
+    const val REVEALED_AT_PROPERTY = "revealedAt"
     const val LIKE_LIST_PROPERTY = "likeList"
     const val REACTION_COUNT_PROPERTY = "reactionCount"
     const val REACTION_SUMMARY_PROPERTY = "reactionSummary"
@@ -23,5 +25,7 @@ object Constants {
     const val REPLY_CHAR_LIMIT = 280
     const val DEFAULT_HEART_REACTION = "\u2764\ufe0f"
     const val SNAPSHOT_TITLE_COLLAPSED_MAX_LINES = 2
+    const val SNAPSHOT_REVEAL_BLUR_DP = 18
+    const val SNAPSHOT_REVEAL_OVERLAY_ALPHA = 0.78f
 
 }

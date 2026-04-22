@@ -5,6 +5,8 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map
 import com.hvasoft.dailydose.data.auth.AuthSessionProvider
+import com.hvasoft.dailydose.data.local.CachedRevealStateDao
+import com.hvasoft.dailydose.data.local.CachedRevealStateEntity
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.local.FeedAssetStorage
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
@@ -20,6 +22,7 @@ import com.hvasoft.dailydose.data.local.PendingSnapshotActionDao
 import com.hvasoft.dailydose.data.local.PendingSnapshotActionEntity
 import com.hvasoft.dailydose.data.local.toDomain
 import com.hvasoft.dailydose.data.local.toOfflineEntity
+import com.hvasoft.dailydose.domain.common.extension_functions.canUseInteractions
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedCurrentUserReaction
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionCount
 import com.hvasoft.dailydose.domain.common.extension_functions.normalizedReactionSummary
@@ -29,8 +32,10 @@ import com.hvasoft.dailydose.domain.model.HomeFeedSyncState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionType
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import com.hvasoft.dailydose.domain.repository.HomeRepository
 import kotlinx.coroutines.flow.Flow
@@ -44,6 +49,7 @@ class HomeRepositoryImpl @Inject constructor(
     private val offlineFeedItemDao: OfflineFeedItemDao,
     private val offlineMediaAssetDao: OfflineMediaAssetDao,
     private val offlineSnapshotReplyDao: OfflineSnapshotReplyDao,
+    private val cachedRevealStateDao: CachedRevealStateDao,
     private val pendingSnapshotActionDao: PendingSnapshotActionDao,
     private val feedSyncStateDao: FeedSyncStateDao,
     private val offlineFeedMapper: OfflineFeedMapper,
@@ -96,6 +102,7 @@ class HomeRepositoryImpl @Inject constructor(
 
     override suspend fun clearOfflineSnapshots(accountId: String) {
         refreshCoordinator.clearAccount(accountId)
+        cachedRevealStateDao.deleteByAccount(accountId)
         pendingSnapshotActionDao.deleteByAccount(accountId)
         offlineSnapshotReplyDao.deleteByAccount(accountId)
     }
@@ -138,6 +145,9 @@ class HomeRepositoryImpl @Inject constructor(
                     hasPendingReaction = false,
                     hasPendingReply = false,
                     legacyLikeCount = snapshot.likeList?.size,
+                    visibilityMode = SnapshotVisibilityMode.VISIBLE_OWNER,
+                    revealSyncState = SnapshotRevealSyncState.CONFIRMED,
+                    isRevealedForViewer = true,
                     availabilityStatus = OfflineItemAvailabilityStatus.MEDIA_PARTIAL,
                     syncedAt = cachedAt,
                 ),
@@ -145,6 +155,63 @@ class HomeRepositoryImpl @Inject constructor(
         )
         trimRetainedFeed(accountId)
         markFeedOnline(accountId, cachedAt)
+    }
+
+    override suspend fun revealSnapshot(snapshot: Snapshot) {
+        val accountId = authSessionProvider.requireCurrentUserId()
+        if (snapshot.idUserOwner == accountId || snapshot.visibilityMode == SnapshotVisibilityMode.VISIBLE_OWNER) {
+            return
+        }
+
+        val existingReveal = cachedRevealStateDao.getBySnapshotId(accountId, snapshot.snapshotKey)
+        if (existingReveal?.syncState == SnapshotRevealSyncState.CONFIRMED) {
+            updateLocalRevealState(
+                accountId = accountId,
+                snapshotId = snapshot.snapshotKey,
+                revealSyncState = SnapshotRevealSyncState.CONFIRMED,
+                visibilityMode = SnapshotVisibilityMode.VISIBLE_REVEALED,
+                isRevealedForViewer = true,
+            )
+            return
+        }
+
+        val revealedAt = existingReveal?.revealedAt ?: System.currentTimeMillis()
+        cachedRevealStateDao.upsert(
+            CachedRevealStateEntity(
+                accountId = accountId,
+                snapshotId = snapshot.snapshotKey,
+                revealedAt = revealedAt,
+                syncState = SnapshotRevealSyncState.PENDING,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+        updateLocalRevealState(
+            accountId = accountId,
+            snapshotId = snapshot.snapshotKey,
+            revealSyncState = SnapshotRevealSyncState.PENDING,
+            visibilityMode = SnapshotVisibilityMode.VISIBLE_REVEALED,
+            isRevealedForViewer = true,
+        )
+        pendingSnapshotActionDao.upsert(
+            PendingSnapshotActionEntity(
+                actionId = "reveal-$accountId-${snapshot.snapshotKey}",
+                accountId = accountId,
+                snapshotId = snapshot.snapshotKey,
+                actionType = PendingSnapshotActionType.MARK_REVEALED,
+                payload = SnapshotInteractionSyncCoordinator.encodeRevealPayload(revealedAt),
+                createdAt = revealedAt,
+                lastAttemptAt = null,
+                attemptCount = 0,
+                queueState = PendingSnapshotActionQueueState.QUEUED,
+                supersedesActionId = null,
+            ),
+        )
+        interactionSyncCoordinator.refreshPendingFlags(accountId, snapshot.snapshotKey)
+        interactionSyncCoordinator.flushPendingActions(
+            accountId = accountId,
+            rollbackOnFailure = false,
+        )
+        interactionSyncCoordinator.refreshPendingFlags(accountId, snapshot.snapshotKey)
     }
 
     override suspend fun toggleUserLike(snapshot: Snapshot, isChecked: Boolean): Int {
@@ -158,6 +225,7 @@ class HomeRepositoryImpl @Inject constructor(
     override suspend fun setSnapshotReaction(snapshot: Snapshot, emoji: String?) {
         val accountId = authSessionProvider.requireCurrentUserId()
         val cachedSnapshot = offlineFeedItemDao.getBySnapshotId(accountId, snapshot.snapshotKey)
+        if (!canInteractWithSnapshot(accountId, snapshot, cachedSnapshot)) return
         val updatedLocalState = buildUpdatedLocalReactionState(
             snapshot = snapshot,
             cachedSnapshot = cachedSnapshot,
@@ -257,11 +325,13 @@ class HomeRepositoryImpl @Inject constructor(
 
     override suspend fun addSnapshotReply(snapshot: Snapshot, text: String): Result<Unit> = runCatching {
         val accountId = authSessionProvider.requireCurrentUserId()
-        val currentUser = authSessionProvider.currentUserSnapshotOrNull()
-            ?: throw IllegalStateException("No signed-in user")
         val trimmedText = text.trim()
         require(trimmedText.isNotBlank()) { "blank" }
         require(trimmedText.length <= Constants.REPLY_CHAR_LIMIT) { "length" }
+        val cachedSnapshot = offlineFeedItemDao.getBySnapshotId(accountId, snapshot.snapshotKey)
+        check(canInteractWithSnapshot(accountId, snapshot, cachedSnapshot)) { "reveal_required" }
+        val currentUser = authSessionProvider.currentUserSnapshotOrNull()
+            ?: throw IllegalStateException("No signed-in user")
         val resolvedUserName = currentUser.displayName
             .ifBlank {
                 runCatching { remoteDatabaseService.getUserNameOnce(currentUser.userId) }
@@ -415,6 +485,25 @@ class HomeRepositoryImpl @Inject constructor(
         )
     }
 
+    private suspend fun updateLocalRevealState(
+        accountId: String,
+        snapshotId: String,
+        revealSyncState: SnapshotRevealSyncState,
+        visibilityMode: SnapshotVisibilityMode,
+        isRevealedForViewer: Boolean,
+    ) {
+        val cachedSnapshot = offlineFeedItemDao.getBySnapshotId(accountId, snapshotId) ?: return
+        offlineFeedItemDao.upsertAll(
+            listOf(
+                cachedSnapshot.copy(
+                    revealSyncState = revealSyncState,
+                    visibilityMode = visibilityMode,
+                    isRevealedForViewer = isRevealedForViewer,
+                ),
+            ),
+        )
+    }
+
     private fun buildUpdatedLocalReactionState(
         snapshot: Snapshot,
         cachedSnapshot: OfflineFeedItemEntity?,
@@ -449,6 +538,21 @@ class HomeRepositoryImpl @Inject constructor(
             reactionSummary = updatedSummary,
             reactionCount = updatedSummary.values.sum(),
         )
+    }
+
+    private fun canInteractWithSnapshot(
+        accountId: String,
+        snapshot: Snapshot,
+        cachedSnapshot: OfflineFeedItemEntity?,
+    ): Boolean = when {
+        cachedSnapshot != null -> {
+            cachedSnapshot.ownerUserId == accountId ||
+                cachedSnapshot.isRevealedForViewer ||
+                cachedSnapshot.visibilityMode == SnapshotVisibilityMode.VISIBLE_OWNER ||
+                cachedSnapshot.visibilityMode == SnapshotVisibilityMode.VISIBLE_REVEALED
+        }
+
+        else -> snapshot.canUseInteractions(accountId)
     }
 
     private fun buildAvatarAssetId(accountId: String, ownerUserId: String): String =

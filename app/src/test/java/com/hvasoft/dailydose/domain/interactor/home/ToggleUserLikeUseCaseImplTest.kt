@@ -18,7 +18,7 @@ class ToggleUserLikeUseCaseImplTest {
 
     @Before
     fun setUp() {
-        homeRepository = mockk()
+        homeRepository = mockk(relaxed = true)
         useCase = ToggleUserLikeUseCaseImpl(homeRepository)
     }
 

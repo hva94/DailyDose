@@ -12,6 +12,7 @@ import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.data.config.DailyPromptCatalogProvider
 import com.hvasoft.dailydose.data.network.model.DailyPromptAssignmentDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotDTO
+import com.hvasoft.dailydose.data.network.model.SnapshotRevealRecordDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReactionDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReplyDTO
 import com.hvasoft.dailydose.data.network.model.User
@@ -22,9 +23,11 @@ import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.DailyPromptComboSelector
 import com.hvasoft.dailydose.domain.model.DailyPromptDay
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import com.hvasoft.dailydose.domain.model.SnapshotTitleGenerationMode
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import com.hvasoft.dailydose.domain.model.UserPostingStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -198,6 +201,45 @@ class RemoteDatabaseServiceImpl @Inject constructor(
         }
         statusReference.addValueEventListener(listener)
         awaitClose { statusReference.removeEventListener(listener) }
+    }
+
+    override suspend fun getRevealedSnapshots(snapshotIds: Set<String>): Map<String, Long> = withContext(Dispatchers.IO) {
+        val userId = authSessionProvider.currentUserIdOrNull()
+            ?.takeIf(String::isNotBlank)
+            ?: return@withContext emptyMap()
+        if (snapshotIds.isEmpty()) {
+            return@withContext emptyMap()
+        }
+
+        val revealsSnapshot = usersDatabase.child(userId)
+            .child(Constants.USER_REVEALED_SNAPSHOTS_PATH)
+            .get()
+            .await()
+        if (!revealsSnapshot.exists()) {
+            return@withContext emptyMap()
+        }
+
+        revealsSnapshot.children.mapNotNull { child ->
+            val snapshotId = child.key?.takeIf(snapshotIds::contains) ?: return@mapNotNull null
+            val revealedAt = child.toRevealTimestampOrNull() ?: return@mapNotNull null
+            snapshotId to revealedAt
+        }.toMap()
+    }
+
+    override suspend fun markSnapshotRevealed(snapshotId: String, revealedAt: Long) {
+        withContext(Dispatchers.IO) {
+            val userId = authSessionProvider.requireCurrentUserId()
+            val revealReference = usersDatabase.child(userId)
+                .child(Constants.USER_REVEALED_SNAPSHOTS_PATH)
+                .child(snapshotId)
+            val existingSnapshot = revealReference.get().await()
+            val resolvedRevealedAt = existingSnapshot.toRevealTimestampOrNull() ?: revealedAt
+            revealReference.setValue(
+                SnapshotRevealRecordDTO(
+                    revealedAt = resolvedRevealedAt,
+                ),
+            ).await()
+        }
     }
 
     override suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int = withContext(Dispatchers.IO) {
@@ -392,6 +434,10 @@ class RemoteDatabaseServiceImpl @Inject constructor(
                     reactionCount = 0,
                     reactionSummary = emptyMap(),
                     replyCount = 0,
+                    visibilityMode = SnapshotVisibilityMode.VISIBLE_OWNER,
+                    revealSyncState = SnapshotRevealSyncState.CONFIRMED,
+                    isRevealedForViewer = true,
+                    isOwnerView = true,
                     likeCount = "0",
                     syncedAt = dto.dateTime,
                 ),
@@ -472,6 +518,18 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             replyCount = maxOf(storedReplyCount, derivedReplyCount),
             currentUserReaction = currentUserReaction,
             legacyLikeCount = likeList.size.takeIf { it > 0 },
+            visibilityMode = if (idUserOwner == currentUserId && currentUserId.isNullOrBlank().not()) {
+                SnapshotVisibilityMode.VISIBLE_OWNER
+            } else {
+                SnapshotVisibilityMode.HIDDEN_UNREVEALED
+            },
+            revealSyncState = if (idUserOwner == currentUserId && currentUserId.isNullOrBlank().not()) {
+                SnapshotRevealSyncState.CONFIRMED
+            } else {
+                SnapshotRevealSyncState.NONE
+            },
+            isRevealedForViewer = idUserOwner == currentUserId && currentUserId.isNullOrBlank().not(),
+            isOwnerView = idUserOwner == currentUserId && currentUserId.isNullOrBlank().not(),
             snapshotKey = snapshotKey,
             isLikedByCurrentUser = currentUserReaction != null,
             likeCount = resolvedReactionCount.toString(),
@@ -577,6 +635,15 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             lastPromptComboId = dto.lastPromptComboId,
         )
     }
+
+    private fun DataSnapshot.toRevealTimestampOrNull(): Long? =
+        getValue(SnapshotRevealRecordDTO::class.java)
+            ?.revealedAt
+            ?.takeIf { it > 0 }
+            ?: child(Constants.REVEALED_AT_PROPERTY).getValue(Long::class.java)
+            ?.takeIf { it > 0 }
+            ?: getValue(Long::class.java)
+            ?.takeIf { it > 0 }
 
     private companion object {
         val logger: Logger = Logger.getLogger(RemoteDatabaseServiceImpl::class.java.name)

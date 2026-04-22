@@ -14,6 +14,8 @@ import com.hvasoft.dailydose.data.local.OfflineItemAvailabilityStatus
 import com.hvasoft.dailydose.data.local.OfflineMediaAssetType
 import com.hvasoft.dailydose.data.local.ProfileLocalCache
 import com.hvasoft.dailydose.data.network.model.User
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.just
@@ -231,6 +233,9 @@ class ProfileRepositoryImplTest {
                     ownerAvatarAssetId = "avatar-$userId-$userId",
                     likeCount = 0,
                     likedByCurrentUser = false,
+                    visibilityMode = SnapshotVisibilityMode.VISIBLE_OWNER,
+                    revealSyncState = SnapshotRevealSyncState.CONFIRMED,
+                    isRevealedForViewer = true,
                     availabilityStatus = OfflineItemAvailabilityStatus.MEDIA_PARTIAL,
                     syncedAt = 200L,
                 ),
@@ -276,6 +281,9 @@ class ProfileRepositoryImplTest {
                     ownerAvatarAssetId = "avatar-$userId-$userId",
                     likeCount = 0,
                     likedByCurrentUser = false,
+                    visibilityMode = SnapshotVisibilityMode.VISIBLE_OWNER,
+                    revealSyncState = SnapshotRevealSyncState.CONFIRMED,
+                    isRevealedForViewer = true,
                     availabilityStatus = OfflineItemAvailabilityStatus.MEDIA_PARTIAL,
                     syncedAt = 200L,
                 ),

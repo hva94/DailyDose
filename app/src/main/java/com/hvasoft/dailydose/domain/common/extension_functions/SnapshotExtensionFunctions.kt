@@ -2,6 +2,7 @@ package com.hvasoft.dailydose.domain.common.extension_functions
 
 import com.hvasoft.dailydose.data.common.Constants
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotVisibilityMode
 
 fun Snapshot.getLikeCountText(): String {
     return normalizedReactionCount().toString()
@@ -16,6 +17,28 @@ fun Snapshot.isOwnedBy(userId: String?): Boolean {
     val currentUserId = userId ?: return false
     return this.idUserOwner == currentUserId
 }
+
+fun Snapshot.resolvedIsOwnerView(currentUserId: String?): Boolean =
+    isOwnerView || isOwnedBy(currentUserId)
+
+fun Snapshot.isVisibleToViewer(currentUserId: String? = null): Boolean =
+    resolvedIsOwnerView(currentUserId) || isVisibleForViewer || isRevealedForViewer
+
+fun Snapshot.isHiddenFromViewer(currentUserId: String? = null): Boolean = when {
+    resolvedIsOwnerView(currentUserId) -> false
+    isVisibleToViewer(currentUserId) -> false
+    else -> visibilityMode == SnapshotVisibilityMode.HIDDEN_UNREVEALED ||
+        visibilityMode == SnapshotVisibilityMode.HIDDEN_PENDING_STATE
+}
+
+fun Snapshot.canRevealImage(currentUserId: String? = null): Boolean =
+    !resolvedIsOwnerView(currentUserId) && isHiddenFromViewer(currentUserId)
+
+fun Snapshot.canUseInteractions(currentUserId: String? = null): Boolean =
+    isVisibleToViewer(currentUserId)
+
+fun Snapshot.canOpenExpandedImage(currentUserId: String? = null): Boolean =
+    canUseInteractions(currentUserId)
 
 fun Snapshot.normalizedReactionSummary(): Map<String, Int> = when {
     reactionSummary.isNotEmpty() -> reactionSummary.filterValues { it > 0 }

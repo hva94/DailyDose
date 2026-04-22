@@ -2,6 +2,8 @@ package com.hvasoft.dailydose.data.repository
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
+import com.hvasoft.dailydose.data.local.CachedRevealStateDao
+import com.hvasoft.dailydose.data.local.CachedRevealStateEntity
 import com.hvasoft.dailydose.data.local.FeedSyncStateDao
 import com.hvasoft.dailydose.data.local.FeedSyncStateEntity
 import com.hvasoft.dailydose.data.local.OfflineFeedItemDao
@@ -21,6 +23,7 @@ import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
 import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.PendingSnapshotActionQueueState
 import com.hvasoft.dailydose.domain.model.Snapshot
+import com.hvasoft.dailydose.domain.model.SnapshotRevealSyncState
 import com.hvasoft.dailydose.domain.model.SnapshotReply
 import com.hvasoft.dailydose.domain.model.SnapshotReplyDeliveryState
 import com.hvasoft.dailydose.domain.model.UserPostingStatus
@@ -206,7 +209,10 @@ internal class FakeRemoteDatabaseService(
     private val namesByUserId: Map<String, String> = emptyMap(),
     private val avatarsByUserId: Map<String, String> = emptyMap(),
     private val repliesBySnapshotId: Map<String, List<SnapshotReply>> = emptyMap(),
+    initialRevealsBySnapshotId: Map<String, Long> = emptyMap(),
 ) : RemoteDatabaseService {
+    private val revealedSnapshots = initialRevealsBySnapshotId.toMutableMap()
+
     override fun getSnapshots(): Flow<List<Snapshot>> = flowOf(snapshots)
 
     override suspend fun getSnapshotsOnce(): List<Snapshot> = snapshots
@@ -231,6 +237,13 @@ internal class FakeRemoteDatabaseService(
 
     override fun observeUserPostingStatus(): Flow<UserPostingStatus?> = flowOf(null)
 
+    override suspend fun getRevealedSnapshots(snapshotIds: Set<String>): Map<String, Long> =
+        revealedSnapshots.filterKeys { it in snapshotIds }
+
+    override suspend fun markSnapshotRevealed(snapshotId: String, revealedAt: Long) {
+        revealedSnapshots.putIfAbsent(snapshotId, revealedAt)
+    }
+
     override suspend fun setSnapshotReaction(snapshotId: String, emoji: String?): Int = 1
 
     override suspend fun getSnapshotReplies(snapshotId: String): List<SnapshotReply> =
@@ -251,6 +264,36 @@ internal class FakeRemoteDatabaseService(
             snapshotKey = "snapshot-created",
         ),
     )
+}
+
+internal class FakeCachedRevealStateDao : CachedRevealStateDao {
+    private val storedStates = mutableListOf<CachedRevealStateEntity>()
+
+    override suspend fun getByAccount(accountId: String): List<CachedRevealStateEntity> =
+        storedStates.filter { it.accountId == accountId }
+
+    override suspend fun getBySnapshotId(accountId: String, snapshotId: String): CachedRevealStateEntity? =
+        storedStates.firstOrNull { it.accountId == accountId && it.snapshotId == snapshotId }
+
+    override suspend fun upsert(entity: CachedRevealStateEntity) {
+        storedStates.removeAll { it.accountId == entity.accountId && it.snapshotId == entity.snapshotId }
+        storedStates += entity
+    }
+
+    override suspend fun upsertAll(entities: List<CachedRevealStateEntity>) {
+        entities.forEach { entity ->
+            upsert(entity)
+        }
+    }
+
+    override suspend fun deleteByAccount(accountId: String) {
+        storedStates.removeAll { it.accountId == accountId }
+    }
+
+    fun confirmedSnapshotIds(accountId: String): Set<String> = storedStates
+        .filter { it.accountId == accountId && it.syncState == SnapshotRevealSyncState.CONFIRMED }
+        .map(CachedRevealStateEntity::snapshotId)
+        .toSet()
 }
 
 internal class FakePendingSnapshotActionDao : PendingSnapshotActionDao {
