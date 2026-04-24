@@ -1,6 +1,7 @@
 package com.hvasoft.dailydose.presentation.screens.home.ui
 
 import android.content.Context
+import android.os.Build
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -164,6 +165,17 @@ internal fun SnapshotCard(
         stringResource(R.string.home_description_img_publication_user)
     }
     val revealLabel = stringResource(R.string.home_reveal_tap_to_reveal)
+    val imageRenderMode = resolveSnapshotRevealImageRenderMode(
+        shouldShowHiddenTreatment = shouldShowHiddenTreatment,
+        sdkInt = Build.VERSION.SDK_INT,
+    )
+    val resolvedMainImageModel = remember(context, mainImageModel, imageRenderMode) {
+        buildSnapshotRevealImageModel(
+            context = context,
+            originalModel = mainImageModel,
+            renderMode = imageRenderMode,
+        )
+    }
 
     Card(
         colors = CardDefaults.cardColors(
@@ -257,17 +269,23 @@ internal fun SnapshotCard(
                         },
                     ),
             ) {
-                if (mainImageModel == null) {
+                if (resolvedMainImageModel == null) {
                     LimitedMediaPlaceholder(
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
                     SubcomposeAsyncImage(
-                        model = mainImageModel,
+                        model = resolvedMainImageModel,
                         contentDescription = imageContentDescription,
                         modifier = Modifier
                             .fillMaxSize()
-                            .blur(blurRadius),
+                            .then(
+                                if (imageRenderMode == SnapshotRevealImageRenderMode.ComposeBlur) {
+                                    Modifier.blur(blurRadius)
+                                } else {
+                                    Modifier
+                                },
+                            ),
                         contentScale = ContentScale.Crop,
                         loading = {
                             ShimmerPlaceholder(

@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,7 +21,9 @@ import com.hvasoft.dailydose.presentation.screens.home.ui.ReplyButtonTag
 import com.hvasoft.dailydose.presentation.screens.home.ui.ShareButtonTag
 import com.hvasoft.dailydose.presentation.screens.home.ui.SnapshotCard
 import com.hvasoft.dailydose.presentation.screens.home.ui.SnapshotImageTag
+import com.hvasoft.dailydose.presentation.screens.home.ui.SnapshotRevealOverlayTag
 import com.hvasoft.dailydose.presentation.theme.DailyDoseTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -69,6 +72,10 @@ class SnapshotRevealInteractionsTest {
         composeRule.onNodeWithTag(SnapshotImageTag).performClick()
         composeRule.waitForIdle()
 
+        assertEquals(
+            0,
+            composeRule.onAllNodesWithTag(SnapshotRevealOverlayTag).fetchSemanticsNodes().size,
+        )
         composeRule.onNodeWithTag(ReactionButtonTag).assertIsEnabled()
         composeRule.onNodeWithTag(ReplyButtonTag).assertIsEnabled()
         composeRule.onNodeWithTag(ShareButtonTag).assertIsEnabled()

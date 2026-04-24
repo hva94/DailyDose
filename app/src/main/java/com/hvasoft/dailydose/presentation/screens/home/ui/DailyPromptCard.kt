@@ -56,34 +56,25 @@ internal fun DailyPromptCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+            modifier = Modifier.padding(all = 16.dp),
             horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = stringResource(R.string.home_daily_prompt_label).uppercase(),
-                color = primaryColor.copy(alpha = 0.88f),
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 3.sp,
-                ),
-            )
-
             Text(
                 text = promptText,
                 color = onSurfaceColor,
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 36.sp,
-                    lineHeight = 40.sp,
-                    letterSpacing = 1.2.sp,
+                    fontSize = 24.sp,
+                    lineHeight = 28.sp,
+                    letterSpacing = 0.5.sp,
                 ),
             )
 
             Text(
                 text = stringResource(R.string.home_daily_prompt_helper),
                 color = onSurfaceVariantColor.copy(alpha = 0.66f),
-                style = MaterialTheme.typography.titleMedium.copy(
+                style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.Normal,
                     letterSpacing = 0.4.sp,
                 ),
@@ -92,7 +83,7 @@ internal fun DailyPromptCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(2.45f)
+                    .aspectRatio(4.2f)
                     .drawBehind {
                         drawRoundRect(
                             color = primaryColor.copy(alpha = 0.24f),
@@ -124,16 +115,16 @@ internal fun DailyPromptCard(
                     painter = painterResource(R.drawable.ic_photo_camera),
                     contentDescription = stringResource(R.string.add_button_select),
                     tint = primaryColor.copy(alpha = 0.70f),
-                    modifier = Modifier.size(88.dp),
+                    modifier = Modifier.size(66.dp),
                 )
             }
 
             Box(
                 modifier = Modifier
-                    .padding(vertical = 8.dp)
+                    .padding(top = 4.dp)
                     .align(Alignment.CenterHorizontally)
-                    .height(48.dp)
-                    .width(200.dp)
+                    .height(36.dp)
+                    .width(150.dp)
                     .background(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
@@ -155,9 +146,9 @@ internal fun DailyPromptCard(
                         text = stringResource(R.string.add_button_post),
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 16.sp,
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         painter = painterResource(R.drawable.ic_post_arrow),
                         contentDescription = stringResource(R.string.add_button_post),

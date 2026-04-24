@@ -18,6 +18,14 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
+## 1.4.1 - Version 6 release.
+- Hidden photos now stay more obscured on older Android devices before you reveal them.
+- Tap-to-reveal blur is now more consistent across newer and older Android versions.
+- Fresh installations are now more reliable when the daily prompt cannot be loaded from the server.
+- The daily prompt now falls back more gracefully instead of blocking the Home experience.
+- The daily prompt card now uses a more compact layout in the Home feed.
+- Feed spacing was tightened to make scrolling feel denser and cleaner.
+
 ## 1.4.0 - Version 5 release.
 - Other users' photos now stay blurred until you tap to reveal them.
 - Revealed photos now stay visible for you across refreshes and retained offline feed sessions.

@@ -27,7 +27,6 @@
     <string name="home_profile">Myself</string>
     <string name="home_not_found_user_data">First you have to add a profile picture from Profile</string>
     <string name="home_description_profile_user_photo">User profile picture</string>
-    <string name="home_daily_prompt_label">Daily Prompt</string>
     <string name="home_daily_prompt_helper">Tap to post your daily dose</string>
     <string name="home_reaction_picker_action">Open reaction picker</string>
 

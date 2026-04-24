@@ -167,7 +167,7 @@ class RemoteDatabaseServiceImpl @Inject constructor(
         val dateKey = DailyPromptDay.currentDateKey()
         val promptReference = dailyPromptAssignmentsReference().child(dateKey)
         launch {
-            trySend(resolveDailyPromptAssignment(dateKey))
+            trySend(resolveDailyPromptAssignmentOrFallback(dateKey))
         }
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -175,7 +175,11 @@ class RemoteDatabaseServiceImpl @Inject constructor(
             }
 
             override fun onCancelled(error: DatabaseError) {
-                close(error.toException())
+                logger.warning(
+                    "Daily prompt listener cancelled for $dateKey, falling back to local prompt: ${error.message}",
+                )
+                trySend(buildLocalDailyPromptAssignment(dateKey))
+                close()
             }
         }
         promptReference.addValueEventListener(listener)
@@ -600,6 +604,35 @@ class RemoteDatabaseServiceImpl @Inject constructor(
         getValue(DailyPromptAssignmentDTO::class.java)
             ?.comboId
             ?.takeIf(String::isNotBlank)
+
+    private suspend fun resolveDailyPromptAssignmentOrFallback(dateKey: String): DailyPromptAssignment? =
+        runCatching {
+            resolveDailyPromptAssignment(dateKey)
+        }.getOrElse { failure ->
+            logger.warning(
+                "Unable to resolve remote daily prompt for $dateKey, using local fallback: ${failure.message}",
+            )
+            buildLocalDailyPromptAssignment(dateKey)
+        }
+
+    private fun buildLocalDailyPromptAssignment(
+        dateKey: String,
+        previousComboId: String? = null,
+    ): DailyPromptAssignment? {
+        val combo = DailyPromptComboSelector.resolveForDay(
+            combos = dailyPromptCatalogProvider.getDailyPromptCombos(),
+            dateKey = dateKey,
+            previousComboId = previousComboId,
+        ) ?: return null
+        return DailyPromptAssignmentDTO(
+            comboId = combo.comboId,
+            promptText = combo.promptText,
+            titlePatterns = combo.titlePatterns,
+            answerFormats = combo.answerFormats,
+            assignedAt = System.currentTimeMillis(),
+            previousComboId = previousComboId,
+        ).toDomain(dateKey)
+    }
 
     private fun DailyPromptAssignmentDTO.toDomain(dateKey: String): DailyPromptAssignment? {
         val sanitizedTitlePatterns = titlePatterns

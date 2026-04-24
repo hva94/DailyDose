@@ -129,7 +129,7 @@ internal fun HomeContent(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = listContentPadding,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         if (uiState.showsOfflineMessaging) {
                             item(key = "home-feed-status") {

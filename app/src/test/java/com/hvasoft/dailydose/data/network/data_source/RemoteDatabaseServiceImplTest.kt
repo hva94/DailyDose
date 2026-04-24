@@ -4,6 +4,8 @@ import com.google.android.gms.tasks.Tasks
 import com.google.common.truth.Truth.assertThat
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseException
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.storage.StorageReference
@@ -16,6 +18,7 @@ import com.hvasoft.dailydose.data.network.model.SnapshotReactionDTO
 import com.hvasoft.dailydose.data.network.model.SnapshotReplyDTO
 import com.hvasoft.dailydose.domain.model.CreateSnapshotRequest
 import com.hvasoft.dailydose.domain.model.CreateSnapshotResult
+import com.hvasoft.dailydose.domain.model.DailyPromptAssignment
 import com.hvasoft.dailydose.domain.model.DailyPromptCombo
 import com.hvasoft.dailydose.domain.model.DailyPromptComboSelector
 import com.hvasoft.dailydose.domain.model.DailyPromptDay
@@ -28,6 +31,9 @@ import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -145,6 +151,70 @@ class RemoteDatabaseServiceImplTest {
         assertThat(storedAssignment.captured.answerFormats)
             .containsExactlyElementsIn(expectedCombo.answerFormats)
             .inOrder()
+    }
+
+    @Test
+    fun `observeActiveDailyPrompt falls back to the local prompt when remote access is denied`() = runTest {
+        val dateKey = DailyPromptDay.currentDateKey()
+        val rootReference = mockk<DatabaseReference>()
+        val assignmentsReference = mockk<DatabaseReference>()
+        val promptReference = mockk<DatabaseReference>()
+
+        every { snapshotsDatabase.root } returns rootReference
+        every { rootReference.child(Constants.DAILY_PROMPT_ASSIGNMENTS_PATH) } returns assignmentsReference
+        every { assignmentsReference.child(dateKey) } returns promptReference
+        every { promptReference.get() } returns Tasks.forException(DatabaseException("Permission denied"))
+        every { promptReference.addValueEventListener(any()) } answers { firstArg<ValueEventListener>() }
+        every { promptReference.removeEventListener(any<ValueEventListener>()) } returns Unit
+
+        val observedPrompt = service.observeActiveDailyPrompt().first()
+        val expectedCombo = DailyPromptComboSelector.resolveForDay(
+            combos = dailyPromptCombos,
+            dateKey = dateKey,
+            previousComboId = null,
+        )!!
+
+        assertThat(observedPrompt?.comboId).isEqualTo(expectedCombo.comboId)
+        assertThat(observedPrompt?.promptText).isEqualTo(expectedCombo.promptText)
+    }
+
+    @Test
+    fun `observeActiveDailyPrompt completes without failure when listener is cancelled`() = runTest {
+        val dateKey = DailyPromptDay.currentDateKey()
+        val previousDateKey = DailyPromptDay.previousDateKey(dateKey)
+        val rootReference = mockk<DatabaseReference>()
+        val assignmentsReference = mockk<DatabaseReference>()
+        val promptReference = mockk<DatabaseReference>()
+        val previousPromptReference = mockk<DatabaseReference>()
+        val currentPromptSnapshot = mockk<DataSnapshot>()
+        val previousPromptSnapshot = mockk<DataSnapshot>()
+        val listenerSlot = slot<ValueEventListener>()
+        val permissionDeniedError = mockk<DatabaseError>()
+
+        every { snapshotsDatabase.root } returns rootReference
+        every { rootReference.child(Constants.DAILY_PROMPT_ASSIGNMENTS_PATH) } returns assignmentsReference
+        every { assignmentsReference.child(dateKey) } returns promptReference
+        every { assignmentsReference.child(previousDateKey) } returns previousPromptReference
+        every { promptReference.get() } returns Tasks.forResult(currentPromptSnapshot)
+        every { previousPromptReference.get() } returns Tasks.forResult(previousPromptSnapshot)
+        every { currentPromptSnapshot.getValue(DailyPromptAssignmentDTO::class.java) } returns null
+        every { previousPromptSnapshot.getValue(DailyPromptAssignmentDTO::class.java) } returns null
+        every { promptReference.setValue(any()) } returns Tasks.forResult(null)
+        every { promptReference.addValueEventListener(capture(listenerSlot)) } answers { listenerSlot.captured }
+        every { promptReference.removeEventListener(any<ValueEventListener>()) } returns Unit
+        every { permissionDeniedError.message } returns "Permission denied"
+
+        val observedPrompts = mutableListOf<DailyPromptAssignment?>()
+        val collectJob = launch {
+            service.observeActiveDailyPrompt().toList(observedPrompts)
+        }
+
+        advanceUntilIdle()
+        listenerSlot.captured.onCancelled(permissionDeniedError)
+        collectJob.join()
+
+        assertThat(collectJob.isCancelled).isFalse()
+        assertThat(observedPrompts).isNotEmpty()
     }
 
     @Test

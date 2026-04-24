@@ -61,6 +61,37 @@ class SnapshotRevealTest {
         )
     }
 
+    @Test
+    fun hiddenSnapshotShowsRevealOverlay() {
+        val imagePath = createLocalImageFile("snapshot-reveal-hidden.jpg")
+
+        composeRule.setContent {
+            val context = LocalContext.current
+            DailyDoseTheme {
+                SnapshotCard(
+                    snapshot = hiddenSnapshot(imagePath),
+                    actionPolicy = HomeFeedActionPolicy.FULL_ACCESS,
+                    onReactionSelected = {},
+                    onOpenReplies = {},
+                    onDelete = {},
+                    onShare = {},
+                    onOpenImage = {},
+                    isPreview = false,
+                    context = context,
+                    currentUserId = "viewer-1",
+                )
+            }
+        }
+
+        assertEquals(
+            1,
+            composeRule
+                .onAllNodesWithTag(SnapshotRevealOverlayTag, useUnmergedTree = true)
+                .fetchSemanticsNodes()
+                .size,
+        )
+    }
+
     private fun hiddenSnapshot(imagePath: String): Snapshot = Snapshot(
         snapshotKey = "snapshot-hidden",
         title = "Hidden post",
