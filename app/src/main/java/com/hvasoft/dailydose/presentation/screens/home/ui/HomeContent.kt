@@ -67,9 +67,6 @@ internal fun HomeContent(
     val isOfflineEmpty = uiState.availabilityMode == HomeFeedAvailabilityMode.OFFLINE_EMPTY &&
         uiState.isBackgroundRefreshing.not() &&
         pagingItems.itemCount == 0
-    val shouldDeferListUntilPromptLoads = uiState.isPromptLoading &&
-        loadState is LoadState.NotLoading &&
-        pagingItems.itemCount > 0
     val isEmpty = loadState is LoadState.NotLoading &&
         pagingItems.itemCount == 0 &&
         isOfflineEmpty.not() &&
@@ -90,7 +87,7 @@ internal fun HomeContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             when {
-                isInitialLoading || shouldDeferListUntilPromptLoads -> {
+                isInitialLoading -> {
                     CircularProgressIndicator(
                         modifier = Modifier
                             .align(Alignment.Center)

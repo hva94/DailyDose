@@ -33,7 +33,8 @@ data class HomeFeedUiState(
         get() = availabilityMode != HomeFeedAvailabilityMode.ONLINE_FRESH
 
     val shouldShowDailyPromptCard: Boolean
-        get() = promptAvailabilityMode == HomePromptAvailabilityMode.AVAILABLE &&
+        get() = !isPromptLoading &&
+            promptAvailabilityMode == HomePromptAvailabilityMode.AVAILABLE &&
             activeDailyPrompt != null
 
     companion object {

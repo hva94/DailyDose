@@ -18,6 +18,11 @@ DailyDose uses a **clean layered architecture** with three layers — presentati
 - All updates will be documented in this README.
 - Versioning: `Major.Minor.Patch` (e.g. `1.0.0`)
 
+## 1.4.2 - Version 7 release.
+- Offline Home now shows retained feed content instead of staying stuck on loading.
+- Daily prompt loading no longer blocks cached Home feed visibility.
+- The daily prompt card now waits for prompt state to resolve before appearing.
+
 ## 1.4.1 - Version 6 release.
 - Hidden photos now stay more obscured on older Android devices before you reveal them.
 - Tap-to-reveal blur is now more consistent across newer and older Android versions.
